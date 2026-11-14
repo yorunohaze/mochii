@@ -52,7 +52,7 @@ test('locations are hidden by default; only your own position is exact', () => {
 
 test('consent reveals a rounded area with no accuracy, timestamp or exact location', () => {
   engine.setShowArea('Bob', true);
-  assert.deepEqual(friends(), [{ id: 'Bob', name: 'Bob', kind: 'area', lat: 60.195, lon: 24.83, radius: 800 }]);
+  assert.deepEqual(friends(), [{ id: 'Bob', name: 'Bob', kind: 'area', lat: 60.195, lon: 24.83, radius: 800, mood: null }]);
   assert.ok(events.some((e) => e.id === 'Alice' && e.state.map.friends.length === 1));
   engine.setShowArea('Bob', false);
   assert.deepEqual(friends(), []);
@@ -82,7 +82,7 @@ test('rough positions expire after three hours', () => {
 
 test('On my way shares exact coordinates only with the confirmed partner', () => {
   db.plans.plan = plan();
-  assert.deepEqual(friends(), [{ id: 'Bob', name: 'Bob', kind: 'live', lat: 60.1901234, lon: 24.8312345, planId: 'plan' }]);
+  assert.deepEqual(friends(), [{ id: 'Bob', name: 'Bob', kind: 'live', lat: 60.1901234, lon: 24.8312345, planId: 'plan', mood: null }]);
   assert.deepEqual(friends('Cara'), []);
   db.plans.plan.going = {};
   assert.deepEqual(friends(), []);
@@ -125,4 +125,56 @@ test('invalid coordinates cannot break friends maps', () => {
   const original = { ...db.users.Bob.loc };
   for (const pos of [{ lat: 91, lon: 0 }, { lat: 0, lon: 181 }, { lat: NaN, lon: 24 }]) engine.updateLocation('Bob', pos);
   assert.deepEqual(db.users.Bob.loc, original);
+});
+
+test('weather is unset for existing accounts and never turns on location sharing', () => {
+  assert.equal(engine.stateFor('Bob').me.mood, null);
+  assert.equal(engine.setMood('Bob', 'rainy'), true);
+  assert.equal(db.users.Bob.mood, 'rainy');
+  assert.equal(engine.stateFor('Bob').me.mood, 'rainy');
+  assert.equal(db.users.Bob.showArea, null);
+  assert.deepEqual(friends(), []);
+  assert.equal(db.log.length, 0);
+});
+
+test('visible cats share their weather immediately and clearing it reaches other maps', () => {
+  engine.setShowArea('Bob', true);
+  events.length = 0;
+  engine.setMood('Bob', 'foggy');
+  assert.equal(events.find((e) => e.id === 'Alice').state.map.friends[0].mood, 'foggy');
+  assert.equal(friends()[0].lat, 60.195);
+  events.length = 0;
+  engine.setMood('Bob', null);
+  assert.equal(events.find((e) => e.id === 'Alice').state.map.friends[0].mood, null);
+});
+
+test('weather disappears with a hidden, paused or stale cat', () => {
+  engine.setMood('Bob', 'sunny');
+  engine.setShowArea('Bob', true);
+  engine.setShowArea('Bob', false);
+  assert.deepEqual(friends(), []);
+  engine.setShowArea('Bob', true);
+  engine.setPause('Bob', 3);
+  assert.deepEqual(friends(), []);
+  engine.setPause('Bob', 0);
+  db.users.Bob.loc.at -= 181 * MIN;
+  assert.deepEqual(friends(), []);
+  assert.equal(engine.stateFor('Bob').me.mood, 'sunny');
+});
+
+test('On my way shares weather only with the same people who can see that live cat', () => {
+  engine.setMood('Bob', 'rainbow');
+  db.plans.plan = plan();
+  assert.equal(friends()[0].mood, 'rainbow');
+  assert.deepEqual(friends('Cara'), []);
+});
+
+test('weather rejects unknown values and cannot inject an avatar path', () => {
+  engine.setMood('Bob', 'cloudy');
+  for (const value of [undefined, '', 'snowy', '../../secret', { id: 'sunny' }, 1, true]) {
+    assert.equal(engine.setMood('Bob', value), false);
+    assert.equal(db.users.Bob.mood, 'cloudy');
+  }
+  assert.equal(engine.setMood('missing', 'sunny'), false);
+  for (const mood of ['sunny', 'rainy', 'foggy', 'cloudy', 'stormy', 'rainbow']) assert.equal(engine.setMood('Bob', mood), true);
 });

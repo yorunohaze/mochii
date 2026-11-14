@@ -1,0 +1,34 @@
+/* Mochii's palette and Nunito type, adapted from Hackathon-Junction/mochi. */
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito.ttf') format('truetype');
+  font-weight: 200 1000;
+  font-display: swap;
+}
+:root {
+  --bg: #fff6e9;
+  --card: #fffdf8;
+  --card-alt: #f6ecdf;
+  --alt: #f6ecdf;
+  --text: #5b4636;
+  --muted: #806c5b;
+  --line: #e4d5c3;
+  --outline: #6d5240;
+  --accent: #78533a;
+  --accent-soft: #e4f2e7;
+  --soft: #e4f2e7;
+  --on-accent: #fffdf8;
+  --peach: #ffc8a2;
+  --peach-deep: #ffb383;
+  --mint: #bde6cf;
+  --lavender: #cfc4f2;
+  --sky: #a9d6f5;
+  --warm: #af5d37;
+  --warm-soft: #ffe8d8;
+  --danger: #b13e49;
+  --danger-soft: #ffe3e5;
+  --shadow: 0 4px 0 #5b463626;
+  --radius: 24px;
+  --font: 'Nunito', ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme: light;
+}

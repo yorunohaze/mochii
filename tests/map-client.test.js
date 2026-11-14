@@ -49,10 +49,23 @@ function harness({ failGPU = false } = {}) {
     addSource(name) { this.sources[name] = { setData() {} }; }
     addLayer() {}
     getSource(name) { return this.sources[name]; }
-    easeTo(options) { this.camera = options; }
+    easeTo(options) { this.camera = options; this.cameraCalls = (this.cameraCalls || 0) + 1; }
+    fitBounds(bounds, options) { this.easeTo(options); }
   }
-  const shell = Object.fromEntries(['map', 'top', 'head', 'body', 'sheet', 'mapNotice'].map((key) => [key, new Element()]));
+  class MarkerStub {
+    constructor(options) { Object.assign(this, options); }
+    setLngLat(at) { this.at = at; return this; }
+    getLngLat() { return this.at; }
+    setOffset(offset) { this.offset = offset; return this; }
+    setPopup(popup) { this.popup = popup; return this; }
+    addTo() { return this; }
+    remove() { this.removed = true; }
+  }
+  class PopupStub { on() {} }
+  class BoundsStub { extend() {} }
+  const shell = Object.fromEntries(['map', 'top', 'head', 'body', 'sheet', 'mapNotice', 'stage', 'label', 'plans', 'peek', 'nav', 'welcome', 'mood'].map((key) => [key, new Element()]));
   shell.head.offsetHeight = 66;
+  shell.nav.offsetHeight = 64;
   const document = {
     body: new Element(), documentElement: new Element(), activeElement: null,
     getElementById: () => new Element(), createElement: () => new Element(),
@@ -65,7 +78,7 @@ function harness({ failGPU = false } = {}) {
     setTimeout: (fn) => { timers.set(++timerId, fn); return timerId; },
     clearTimeout: (id) => timers.delete(id), requestAnimationFrame: (fn) => fn(),
     getComputedStyle: () => ({ getPropertyValue: () => '#3e6b55' }),
-    library: { Map: MapStub, AttributionControl: class {} }, testShell: shell,
+    library: { Map: MapStub, Marker: MarkerStub, Popup: PopupStub, LngLatBounds: BoundsStub, AttributionControl: class {} }, testShell: shell,
     testState: { card: { id: 'question' }, me: {}, map: { friends: [] }, plans: [] },
   });
   const run = (code) => vm.runInContext(code, context);
@@ -143,4 +156,80 @@ test('camera padding stays valid on a short viewport', () => {
   const { padding } = h.instances[0].camera;
   assert.ok(padding.bottom >= 0 && padding.top + padding.bottom < 180);
   assert.ok(padding.left + padding.right < 320);
+});
+
+test('Our plans opens the sheet and hides the question without answering it', () => {
+  const h = harness();
+  h.run('ensureMap(); selectHomeView("plans");');
+  assert.equal(h.shell.stage.hidden, true);
+  assert.equal(h.shell.body.inert, false);
+  assert.equal(h.run('state.card.id'), 'question');
+  assert.equal(h.shell.plans.children.length, 1); // empty-plan guidance and a working return button
+  const backButton = h.shell.plans.children[0].children.at(-1);
+  backButton.handlers.click();
+  assert.equal(h.run('homeView'), 'map');
+  assert.equal(h.shell.stage.hidden, false);
+  assert.equal(h.shell.body.inert, false);
+});
+
+test('Explore restores the map without losing upcoming plans', () => {
+  const h = harness();
+  h.run('state.plans = [{ id: "coffee", title: "Coffee with Mira", emoji: "☕", startAt: Date.now(), place: { name: "Cafe" } }]; ensureMap(); selectHomeView("plans"); selectHomeView("map");');
+  assert.equal(h.shell.stage.hidden, false);
+  assert.equal(h.shell.body.inert, true);
+  assert.equal(h.shell.plans.children.length, 1);
+  assert.equal(h.run('state.plans[0].id'), 'coffee');
+});
+
+test('desktop camera leaves room beside the plan panel', () => {
+  const h = harness();
+  h.shell.map.clientWidth = 1280;
+  h.shell.sheet.offsetWidth = 420;
+  h.run('ensureMap(); markers.set("me", { marker: { getLngLat: () => [24.83, 60.19] } }); frameMap(false);');
+  assert.equal(h.instances[0].camera.padding.right, 480);
+  assert.equal(h.instances[0].camera.padding.bottom, 50);
+});
+
+test('your weather updates your map avatar and MOOD button without moving the camera', () => {
+  const h = harness();
+  h.run('state.map.me = { lat: 60.19, lon: 24.83 }; state.me.mood = "sunny"; ensureMap(); updateMap(); renderMoodButton();');
+  const original = h.run('markers.get("me").marker');
+  assert.equal(original.element.children[0].attrs.src, '/icons/moods/sunny.svg');
+  const cameraCalls = h.instances[0].cameraCalls;
+  h.run('state.me.mood = "rainy"; updateMap(); renderMoodButton();');
+  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/moods/rainy.svg');
+  assert.ok(h.shell.mood.attrs['aria-label'].includes('Rainy, sad'));
+  assert.equal(original.removed, true);
+  assert.equal(h.instances[0].cameraCalls, cameraCalls);
+  h.run('state.me.mood = null; updateMap();');
+  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/cat.svg');
+});
+
+test('a friend changing weather replaces their cat on an already open map', () => {
+  const h = harness();
+  h.run('state.map.friends = [{ id: "Bob", name: "Bob", kind: "area", lat: 60.195, lon: 24.83, mood: "foggy" }]; ensureMap(); updateMap();');
+  const original = h.run('markers.get("f:Bob:area").marker');
+  assert.equal(original.element.children[0].children[0].attrs.src, '/icons/moods/foggy.svg');
+  h.run('state.map.friends[0].mood = "rainbow"; updateMap();');
+  assert.equal(h.run('markers.get("f:Bob:area").marker.element.children[0].children[0].attrs.src'), '/icons/moods/rainbow.svg');
+  assert.equal(original.removed, true);
+  h.run('state.map.friends = []; updateMap();');
+  assert.equal(h.run('markers.size'), 0);
+});
+
+test('cats in the same shared area remain distinct without changing their coordinates', () => {
+  const h = harness();
+  h.run('state.map.friends = ["Bob", "Cara"].map(id => ({ id, name: id, kind: "area", lat: 60.195, lon: 24.83 })); ensureMap(); updateMap();');
+  const bob = h.run('markers.get("f:Bob:area").marker');
+  const cara = h.run('markers.get("f:Cara:area").marker');
+  assert.deepEqual([...bob.at], [24.83, 60.195]);
+  assert.deepEqual([...cara.at], [24.83, 60.195]);
+  assert.notDeepEqual([...bob.offset], [...cara.offset]);
+  h.run('state.map.friends.pop(); updateMap();');
+  assert.deepEqual([...bob.offset], [0, 0]);
+});
+
+test('unexpected weather values cannot be turned into image paths', () => {
+  const h = harness();
+  assert.equal(h.run('weatherCat("../../private").attrs.src'), '/icons/cat.svg');
 });

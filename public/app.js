@@ -1,4 +1,4 @@
-// Eden phone app. Eden asks; you answer yes or no. That's the whole interface.
+// Mochii phone app. Mochii asks; you answer yes or no. That's the whole interface.
 const $app = document.getElementById('app');
 const $toasts = document.getElementById('toasts');
 
@@ -9,7 +9,11 @@ let shell = null;
 let stageKey = '';
 let busy = false;
 let authMode = 'signup';
+let homeView = 'map';
+let closeDialog = null;
 let watchId = null;
+let locationRequest = null;
+let locationEpoch = 0;
 let lastSent = null;
 let knownWaiting = null; // plan questions already seen here, so each one nudges once
 const shownToasts = new Set(JSON.parse(sessionStorage.getItem('eden.toasts') || '[]'));
@@ -47,12 +51,43 @@ async function api(path, body) {
     }
     return { ok: res.ok, status: res.status, data };
   } catch {
-    return { ok: false, status: 0, data: { error: "Can't reach Eden. Is the host computer on and on the same Wi-Fi?" } };
+    return { ok: false, status: 0, data: { error: "Can't reach Mochii. Is the host computer on and on the same Wi-Fi?" } };
   }
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const enc = encodeURIComponent;
+
+const MOODS = [
+  { id: 'sunny', name: 'Sunny', feeling: 'Happy', emoji: '☀️' },
+  { id: 'rainy', name: 'Rainy', feeling: 'Sad', emoji: '🌧️' },
+  { id: 'foggy', name: 'Foggy', feeling: 'Uncertain', emoji: '🌫️' },
+  { id: 'cloudy', name: 'Cloudy', feeling: 'Low energy', emoji: '☁️' },
+  { id: 'stormy', name: 'Stormy', feeling: 'Overwhelmed', emoji: '⛈️' },
+  { id: 'rainbow', name: 'Rainbow', feeling: 'Hopeful', emoji: '🌈' },
+];
+const moodInfo = (id) => MOODS.find((m) => m.id === id);
+
+function weatherCat(mood, className = '', name = '') {
+  const weather = moodInfo(mood);
+  return h('img', {
+    src: weather ? `/icons/moods/${weather.id}.svg` : '/icons/cat.svg',
+    class: `cat-art weather-cat ${className} weather-${weather?.id || 'neutral'}`,
+    alt: name ? `${name}${weather ? ` · ${weather.name}, ${weather.feeling.toLowerCase()}` : ''}` : '',
+    draggable: 'false',
+  });
+}
+
+function catImage(className = '', alt = '') {
+  return h('img', { src: '/icons/cat.svg', class: `cat-art ${className}`, alt, draggable: 'false' });
+}
+
+function brand() {
+  return h('div', { class: 'brand' },
+    h('img', { src: '/icons/icon.svg', alt: '', width: '42', height: '42' }),
+    h('div', { class: 'brand-copy' }, h('strong', {}, 'Mochii'), h('span', {}, 'a little closer, together.')),
+  );
+}
 
 function fmtWhen(ts) {
   const d = new Date(ts);
@@ -104,6 +139,7 @@ async function registerServiceWorker() {
 }
 
 async function reportCapabilities() {
+  const userId = state?.me.id;
   const push = !!swReg && 'PushManager' in window && 'Notification' in window;
   let geo = 'geolocation' in navigator ? 'prompt' : 'unsupported';
   try {
@@ -112,9 +148,18 @@ async function reportCapabilities() {
   } catch {
     // Safari < 16
   }
+  if (state?.me.id !== userId) return;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   await api('/api/caps', { push, geo, standalone });
-  if (geo === 'granted' || localStorage.getItem('eden.geo') === 'on') startLocation();
+  if (state?.me.id !== userId) return;
+  const choice = localStorage.getItem('eden.geo');
+  if (choice === 'on' && geo !== 'denied') startLocation();
+  else if (choice === 'on') {
+    localStorage.setItem('eden.geo', 'off');
+    stopLocation();
+  }
+  // Make the first invitation visible above the map, without prompting again after "Not now".
+  if (choice == null && !closeDialog) openLocationPrompt();
 }
 
 /* ------------------------------------------------------------ live updates */
@@ -134,9 +179,12 @@ function connect() {
 }
 
 function signedOut() {
+  closeDialog?.();
   stream?.close();
   stream = null;
   stopLocation();
+  lastSent = null;
+  myPos = null;
   state = null;
   knownWaiting = null;
   void clearNudges(() => true);
@@ -180,36 +228,125 @@ function postPosition(pos) {
   void api('/api/location', { lat, lon, acc });
 }
 
-function onGeoError(err) {
+function locationErrorMessage(err) {
+  if (window.isSecureContext === false) return 'Location needs a secure connection. Open Mochii using the HTTPS address from your host, or localhost on this computer, then try again.';
+  if (!navigator.geolocation) return 'This browser cannot request your location. Open Mochii in a browser with location support.';
+  if (err?.code === 1) return 'Location access is blocked. Open this site\'s browser permissions and allow Location, then try again. Also check that location services are on for your device and browser.';
+  if (err?.code === 3) return 'Finding your location took too long. Check that device location services are on, then try again.';
+  return 'Your location is unavailable right now. Check that device location services are on, then try again.';
+}
+
+function onGeoError(err, notify = true) {
   if (err?.code === 1) {
     localStorage.setItem('eden.geo', 'off');
     stopLocation();
     void api('/api/caps', { geo: 'denied' });
-    toast('Location is off. Eden can still suggest things, just less nearby.');
   }
+  if (notify) toast(locationErrorMessage(err));
 }
 
 function askLocation() {
-  if (!('geolocation' in navigator)) return;
-  localStorage.setItem('eden.geo', 'on');
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
+  if (!state) return Promise.resolve({ ok: false, cancelled: true });
+  if (locationRequest) return locationRequest.promise;
+  if (!navigator.geolocation || window.isSecureContext === false) {
+    return Promise.resolve({ ok: false, message: locationErrorMessage() });
+  }
+  const userId = state?.me.id;
+  const request = {};
+  request.promise = new Promise((resolve) => { request.resolve = resolve; });
+  locationRequest = request;
+  const finish = (result) => {
+    if (locationRequest !== request) return;
+    locationRequest = null;
+    request.resolve(result);
+  };
+  request.cancel = () => finish({ ok: false, cancelled: true });
+  const fail = (err) => {
+    if (locationRequest !== request || state?.me.id !== userId) return;
+    localStorage.setItem('eden.geo', 'off');
+    finish({ ok: false, message: locationErrorMessage(err) });
+    onGeoError(err, false);
+  };
+  try {
+    // Call synchronously from the click: no permission query or network request before this.
+    navigator.geolocation.getCurrentPosition((pos) => {
+      if (locationRequest !== request || state?.me.id !== userId) return;
+      localStorage.setItem('eden.geo', 'on');
+      finish({ ok: true });
       postPosition(pos);
+      void api('/api/caps', { geo: 'granted' });
       startLocation();
-    },
-    onGeoError,
-    { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 },
-  );
+    }, fail, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+  } catch (err) {
+    fail(err);
+  }
+  return request.promise;
 }
 
 function startLocation() {
-  if (!('geolocation' in navigator) || watchId != null) return;
-  watchId = navigator.geolocation.watchPosition(postPosition, onGeoError, { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 });
+  if (!state || !navigator.geolocation || window.isSecureContext === false || watchId != null || localStorage.getItem('eden.geo') !== 'on') return;
+  const userId = state?.me.id, epoch = locationEpoch;
+  const active = () => state?.me.id === userId && locationEpoch === epoch;
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => { if (active()) postPosition(pos); },
+    (err) => { if (active()) onGeoError(err); },
+    { enableHighAccuracy: true, maximumAge: 30000, timeout: 30000 },
+  );
 }
 
 function stopLocation() {
+  locationEpoch++;
+  locationRequest?.cancel();
   if (watchId != null) navigator.geolocation.clearWatch(watchId);
   watchId = null;
+}
+
+function openLocationPrompt(requestNow = false) {
+  const userId = state.me.id;
+  let answered = false;
+  let dismiss;
+  const status = h('p', { class: 'location-status', role: 'status', 'aria-live': 'polite' }, 'Choose Allow location, then allow access in your browser.');
+  const rememberChoice = async (yes) => {
+    if (state?.me.id !== userId) return;
+    const card = state.card;
+    if (card?.action !== 'location') return;
+    const r = await api('/api/answer', { cardId: card.id, yes });
+    if (r.ok && state?.me.id === userId) setState(r.data);
+  };
+  const allow = h('button', { class: 'btn yes', type: 'button', onclick: async () => {
+    if (allow.disabled) return;
+    allow.disabled = true;
+    allow.textContent = 'Finding your location…';
+    status.textContent = 'Allow location in your browser if asked. Waiting for your device to find you…';
+    const result = await askLocation();
+    if (closeDialog !== dismiss || state?.me.id !== userId) return;
+    if (result.ok) {
+      answered = true;
+      dismiss();
+      toast('Location is on. Your cat can find its way around.');
+      void rememberChoice(true);
+    } else {
+      status.textContent = result.message || 'Location request cancelled. You can try again.';
+      allow.disabled = false;
+      allow.textContent = 'Try location again';
+    }
+  } }, 'Allow location');
+  mountDialog(h('section', { class: 'sheet location-sheet', role: 'dialog', 'aria-labelledby': 'location-title', 'aria-describedby': 'location-description' },
+    catImage('profile-cat'),
+    h('span', { class: 'eyebrow' }, 'A LITTLE CLOSER TO YOUR PEOPLE'),
+    h('h2', { id: 'location-title' }, 'Let your cat find you?'),
+    h('p', { id: 'location-description' }, 'Use your location to place your cat on the map and find nearby plans. You choose separately whether friends can see your rough area.'),
+    status, allow,
+    h('button', { class: 'btn quiet', type: 'button', onclick: () => dismiss() }, 'Not now'),
+  ), h('div', { class: 'backdrop' }), () => {
+    if (answered) return;
+    stopLocation();
+    localStorage.setItem('eden.geo', 'off');
+    void rememberChoice(false);
+  });
+  dismiss = closeDialog;
+  // Settings already supplies the user gesture, so it requests immediately without another tap.
+  if (requestNow) allow.click();
 }
 
 /* ------------------------------------------------------------ notifications */
@@ -229,14 +366,14 @@ async function enablePush() {
     const r = await api('/api/push', { subscription: sub.toJSON() });
     if (r.ok) setState(r.data);
   } catch {
-    // no push service here; nudges still work while Eden is open in the background
+    // no push service here; nudges still work while Mochii is open in the background
   }
 }
 
 /**
- * Every plan question gets a notification with its own yes/no. Push sends it when Eden is closed;
- * while Eden is open in the background, the page asks for it itself (same tag, so never twice).
- * Looking at Eden, or answering anywhere, clears them.
+ * Every plan question gets a notification with its own yes/no. Push sends it when Mochii is closed;
+ * while Mochii is open in the background, the page asks for it itself (same tag, so never twice).
+ * Looking at Mochii, or answering anywhere, clears them.
  */
 function syncNudges() {
   const waiting = new Set(state.waiting || []);
@@ -265,7 +402,7 @@ async function clearNudges(shouldClose) {
 function render() {
   if (!state) return renderAuth();
   if (!shell) {
-    // Home: a full-screen map, with Eden's card in a sheet over it (swipe it down to see the map).
+    // Home: a full-screen map, with Mochii's card in a sheet over it (swipe it down to see the map).
     shell = {
       map: h('div', { class: 'map-view', role: 'region', 'aria-label': 'Map of your plans and friends nearby' }),
       top: h('header', { class: 'top' }),
@@ -274,11 +411,14 @@ function render() {
       stage: h('section', { class: 'stage', 'aria-live': 'polite' }),
       label: h('p', { class: 'section-label' }),
       plans: h('div', { class: 'plans' }),
+      welcome: h('aside', { class: 'map-welcome', 'aria-label': 'Your neighbourhood' }),
+      nav: h('nav', { class: 'bottom-nav', 'aria-label': 'Main navigation' }),
+      mood: h('button', { class: 'mood-fab', type: 'button', 'aria-haspopup': 'dialog', onclick: openMood }),
     };
     shell.head = h('button', { class: 'sheet-head', type: 'button', 'aria-controls': 'home-sheet-body', 'aria-label': 'Show or hide the card' }, h('span', { class: 'grab' }), shell.peek);
     shell.body = h('div', { class: 'sheet-body', id: 'home-sheet-body' }, shell.mapNotice, shell.stage, shell.label, shell.plans);
     shell.sheet = h('section', { class: 'home-sheet' }, shell.head, shell.body);
-    $app.replaceChildren(shell.map, shell.top, shell.sheet);
+    $app.replaceChildren(shell.map, shell.top, shell.welcome, shell.sheet, shell.nav, shell.mood);
     document.body.classList.add('home');
     setupSheet();
     stageKey = '';
@@ -289,28 +429,134 @@ function render() {
   renderPlans();
   renderPeek();
   renderMapNotice();
+  renderNavigation();
+  renderWelcome();
+  renderMoodButton();
   updateMap();
   showToasts();
-  document.title = state.card ? '(1) Eden' : 'Eden';
+  document.title = state.card ? '(1) Mochii' : 'Mochii';
 }
 
 function renderTop() {
   shell.top.replaceChildren(
-    h('div', { class: 'brand' }, h('img', { src: '/icons/icon.svg', alt: '' }), 'Eden'),
+    brand(),
     h('div', { class: 'top-actions' },
+      h('button', { class: 'invite-btn', onclick: openInvite }, h('span', { 'aria-hidden': 'true' }, '+'), h('span', {}, 'Invite a friend')),
       map ? h('button', { class: 'icon-btn', 'aria-label': 'Show everything on the map', onclick: () => frameMap(true) }, '◎') : null,
       h('button', { class: 'icon-btn', 'aria-label': 'Menu', onclick: openMenu }, '☰'),
     ),
   );
 }
 
+function renderWelcome() {
+  const total = Math.max(0, (state.people || 1) - 1);
+  shell.welcome.replaceChildren(
+    h('div', { class: 'welcome-note' },
+      h('span', { class: 'eyebrow' }, 'YOUR LITTLE CORNER OF THE WORLD'),
+      h('h2', {}, `Hey, ${state.me.name}.`),
+      h('p', {}, 'Good company could be just around the corner.'),
+      h('span', { class: 'circle-count' }, h('span', { 'aria-hidden': 'true' }, '🐾'), total ? `${total} ${total === 1 ? 'person' : 'people'} to make plans with` : 'A little room for your people'),
+    ),
+    weatherCat(state.me.mood, 'welcome-cat'),
+  );
+}
+
+function renderMoodButton() {
+  const weather = moodInfo(state.me.mood);
+  shell.mood.setAttribute('aria-label', weather ? `Mood: ${weather.name}, ${weather.feeling.toLowerCase()}. Change your weather` : 'Mood: choose your weather');
+  shell.mood.replaceChildren(h('span', { class: 'mood-fab-icon', 'aria-hidden': 'true' }, weather?.emoji || '🐾'), h('span', {}, 'MOOD'));
+}
+
+function openMood() {
+  let saving = false;
+  const status = h('p', { class: 'mood-status', role: 'status' });
+  const grid = h('div', { class: 'mood-grid', role: 'group', 'aria-label': 'Choose your weather' });
+  const clear = h('button', { class: 'btn quiet', type: 'button', onclick: () => saveMood(null) }, 'Clear my mood');
+  const sharing = h('button', { class: 'btn quiet', type: 'button', onclick: async () => {
+    if (saving) return;
+    const showArea = !state.map?.showArea;
+    // A GPS prompt must start in this user gesture, and never just from picking a mood.
+    if (showArea && localStorage.getItem('eden.geo') !== 'on') openLocationPrompt(true);
+    setSaving(true);
+    const r = await api('/api/map', { showArea });
+    setSaving(false);
+    if (r.ok) { setState(r.data); updateSharing(); }
+    else status.textContent = r.data?.error || 'Could not update sharing. Try again.';
+  } });
+  const sharingNote = h('p', { class: 'mood-sharing-note' });
+  const updateSharing = () => {
+    sharing.textContent = state.map?.showArea ? 'Hide my cat’s rough area' : 'Share my cat’s rough area';
+    sharing.setAttribute('aria-pressed', String(!!state.map?.showArea));
+    sharingNote.textContent = state.me.paused ? 'Your cat is hidden while you take a break.'
+      : state.map?.showArea ? 'Your cat and weather appear in your rough area (about 1 km). Location needs to be on.'
+      : 'Your rough area is hidden. During an “On my way” plan, your meeting partner can still see your cat and weather.';
+  };
+  const setSaving = (on) => {
+    saving = on;
+    [...grid.querySelectorAll('button'), clear, sharing].forEach((b) => { b.disabled = on; });
+  };
+  async function saveMood(mood) {
+    if (saving) return;
+    setSaving(true);
+    status.textContent = 'Saving your weather…';
+    const r = await api('/api/mood', { mood });
+    if (r.ok) {
+      closeDialog?.();
+      setState(r.data);
+      toast(mood ? `${moodInfo(mood).name}. Your cat is wearing your weather.` : 'Mood cleared. Just you and your cat.');
+    } else {
+      status.textContent = r.data?.error || 'Could not save your mood. Try again.';
+      setSaving(false);
+    }
+  }
+  for (const weather of MOODS) grid.append(h('button', {
+    class: `mood-option mood-${weather.id}`, type: 'button',
+    'aria-pressed': String(state.me.mood === weather.id),
+    'aria-label': `${weather.name}, ${weather.feeling.toLowerCase()}`, onclick: () => saveMood(weather.id),
+  }, weatherCat(weather.id), h('strong', {}, weather.name), h('span', {}, weather.feeling)));
+  updateSharing();
+  mountDialog(h('section', { class: 'sheet mood-sheet', role: 'dialog', 'aria-label': 'Your mood weather' },
+    h('span', { class: 'eyebrow' }, 'A LITTLE WEATHER, A LITTLE YOU'),
+    h('h2', {}, 'What’s your weather?'),
+    h('p', { class: 'mood-intro' }, 'Every kind of weather belongs here. Pick what feels like you.'),
+    grid, status, clear,
+    h('div', { class: 'mood-sharing' }, h('b', {}, 'Your cat on the map'), sharingNote, sharing,
+      h('p', {}, 'People who can see your cat can see its weather. Change or clear it any time.')),
+  ), h('div', { class: 'backdrop' }));
+}
+
+function renderNavigation() {
+  shell.nav.replaceChildren(
+    ...[
+      ['map', '🗺️', 'Explore', () => selectHomeView('map')],
+      ['plans', '☕', 'Our plans', () => selectHomeView('plans')],
+      ['space', '🐾', 'My space', openMenu],
+    ].map(([id, emoji, label, action]) => h('button', {
+      class: `nav-btn${homeView === id ? ' active' : ''}`,
+      'aria-current': homeView === id ? 'page' : null, onclick: action,
+    }, h('span', { class: 'nav-icon', 'aria-hidden': 'true' }, emoji), h('span', {}, label),
+    id === 'plans' && state.plans?.length ? h('span', { class: 'nav-count' }, state.plans.length) : null)),
+  );
+}
+
+function selectHomeView(view) {
+  homeView = view;
+  shell.stage.hidden = view === 'plans';
+  renderPlans();
+  renderPeek();
+  renderNavigation();
+  setSheetOpen(view === 'plans' || !map);
+  if (view === 'map') frameMap(true);
+}
+
 /** What the folded-down sheet says, so the map can take the whole screen without hiding anything. */
 function renderPeek() {
   const c = state.card;
   const next = (state.plans || [])[0];
-  if (c) shell.peek.textContent = c.progress || `Eden asks: ${c.title}`;
+  if (homeView === 'plans') shell.peek.textContent = 'Our plans · a little time together';
+  else if (c) shell.peek.textContent = c.progress || `Mochii asks: ${c.title}`;
   else if (next) shell.peek.textContent = `Coming up: ${next.title} · ${fmtWhen(next.startAt)}`;
-  else shell.peek.textContent = state.me.paused ? 'Eden is giving you some space 🌙' : 'Nothing to decide right now 🌿';
+  else shell.peek.textContent = state.me.paused ? 'A little catnap. Take your time. 🌙' : 'Your people. Your pace. 🐾';
 }
 
 function renderStage() {
@@ -319,13 +565,14 @@ function renderStage() {
   const key = c ? `card:${c.id}` : paused ? 'paused' : `empty:${state.people > 1}`;
   if (key === stageKey) return;
   stageKey = key;
-  setSheetOpen(!!c); // a question rises up; with nothing to decide, the map gets the screen
+  setSheetOpen(homeView === 'plans' || !!c);
   if (c) return shell.stage.replaceChildren(cardView(c));
   if (paused) {
     return shell.stage.replaceChildren(
       h('div', { class: 'calm' },
-        h('div', { class: 'leaf' }, '🌙'),
-        h('h2', {}, 'Eden is giving you some space.'),
+        catImage('resting-cat'),
+        h('span', { class: 'eyebrow' }, 'CATNAP MODE'),
+        h('h2', {}, 'A little space to just be.'),
         h('p', {}, `Back on ${new Date(paused).toLocaleDateString([], { weekday: 'long' })}. Nothing to do until then.`),
         h('button', { class: 'btn quiet', onclick: () => pause(0) }, "I'm back"),
       ),
@@ -333,16 +580,18 @@ function renderStage() {
   }
   shell.stage.replaceChildren(
     h('div', { class: 'calm' },
-      h('div', { class: 'leaf' }, '🌿'),
+      catImage(),
+      h('span', { class: 'eyebrow' }, 'NO RUSH. NO PRESSURE.'),
       state.people > 1
-        ? [h('h2', {}, 'Nothing to decide right now.'), h('p', {}, `Eden will ask when there's something good to do with your people.${state.me.hasPush ? " It'll tap you on the shoulder." : ' You can leave this open.'}`)]
-        : [h('h2', {}, "You're the first one here."), h('p', {}, 'Eden starts suggesting things as soon as someone else joins. Share this address with a friend.')],
+        ? [h('h2', {}, 'A good moment is on its way.'), h('p', {}, `Mochii will find something lovely to do with your people.${state.me.hasPush ? " We'll give you a little nudge." : ' Check back when you feel like it.'}`)]
+        : [h('h2', {}, 'Good things start with two.'), h('p', {}, 'Bring a friend along. Mochii will help turn “we should hang out” into a little plan.'), h('button', { class: 'btn yes', onclick: openInvite }, 'Invite your first friend')],
     ),
   );
 }
 
 function cardView(c) {
-  const el = h('article', { class: 'card', 'aria-label': c.title });
+  const serious = ['survey', 'support', 'care'].includes(c.kind);
+  const el = h('article', { class: `card${serious ? ' steady' : ''}`, 'aria-label': c.title });
   const lines = (c.lines || []).map((l) => {
     if (l.when) return h('li', {}, h('span', { class: 'i' }, l.icon || '🕒'), fmtWhen(l.when));
     if (l.map) return h('li', {}, h('span', { class: 'i' }, l.icon || '🗺️'), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
@@ -358,8 +607,10 @@ function cardView(c) {
       );
   el.append(
     ...[
-      h('div', { class: 'from' }, c.progress || 'Eden asks'),
-      c.emoji ? h('div', { class: 'emoji', 'aria-hidden': 'true' }, c.emoji) : null,
+      h('div', { class: 'card-heading' },
+        h('div', { class: 'from' }, h('img', { src: '/icons/icon.svg', alt: '' }), c.progress || 'A little nudge from Mochii'),
+        c.emoji ? h('span', { class: 'activity-stamp', 'aria-hidden': 'true' }, c.emoji) : null,
+      ),
       c.note ? h('p', { class: 'note' }, c.note) : null,
       h('h1', {}, c.title),
       lines.length ? h('ul', { class: 'lines' }, lines) : null,
@@ -371,9 +622,13 @@ function cardView(c) {
 
 async function onAnswer(card, yes, el, value) {
   if (busy) return;
+  if (card.action === 'location') {
+    if (yes) return openLocationPrompt(true);
+    localStorage.setItem('eden.geo', 'off');
+    stopLocation();
+  }
   busy = true;
   // Browser permission prompts have to start inside the tap.
-  if (yes && card.action === 'location') askLocation();
   if (yes && card.action === 'notify') void enablePush();
   el.querySelectorAll('button').forEach((b) => (b.disabled = true));
   el.classList.add(yes ? 'leaving-yes' : 'leaving-no');
@@ -389,8 +644,8 @@ async function onAnswer(card, yes, el, value) {
 
 function renderPlans() {
   const plans = state.plans || [];
-  shell.label.textContent = plans.length ? 'Coming up' : '';
-  shell.label.hidden = !plans.length;
+  shell.label.textContent = homeView === 'plans' ? 'Little plans. Real connections.' : 'A little time together';
+  shell.label.hidden = !plans.length && homeView !== 'plans';
   shell.plans.replaceChildren(
     ...plans.map((p) =>
       h('div', { class: 'plan' },
@@ -404,6 +659,11 @@ function renderPlans() {
         ),
       ),
     ),
+  );
+  if (!plans.length && homeView === 'plans') shell.plans.append(
+    h('div', { class: 'calm empty-plans' }, catImage(), h('h2', {}, 'Room for something lovely.'),
+      h('p', {}, 'When you both say yes to a suggestion, your plan will appear right here.'),
+      h('button', { class: 'btn yes', onclick: () => { selectHomeView('map'); setSheetOpen(true); } }, state.card ? 'See what Mochii has in mind' : 'Back to your neighbourhood')),
   );
 }
 
@@ -422,7 +682,7 @@ function setSheetOpen(open) {
   shell.body.inert = !!map && !open;
 }
 
-/** Drag the sheet's handle up or down (or tap it) to fold Eden's card away and see the map. */
+/** Drag the sheet's handle up or down (or tap it) to fold Mochii's card away and see the map. */
 function setupSheet() {
   const { sheet, head } = shell;
   let drag = null;
@@ -430,7 +690,8 @@ function setupSheet() {
   head.addEventListener('pointerdown', (e) => {
     if (!map || e.button !== 0) return;
     dragged = false;
-    drag = { y: e.clientY, open: sheetOpen, range: sheet.offsetHeight - head.offsetHeight };
+    const peek = parseFloat(getComputedStyle(sheet).getPropertyValue('--peek')) || head.offsetHeight;
+    drag = { y: e.clientY, open: sheetOpen, range: sheet.offsetHeight - peek };
     head.setPointerCapture(e.pointerId);
     sheet.classList.add('dragging');
   });
@@ -467,7 +728,7 @@ function setupSheet() {
 
 // MapLibre + OpenFreeMap: free vector maps, no API key. Friends only appear as a rough ~1 km area if they chose
 // to, or live while they're on their way to meet you; the server never sends anything more precise.
-const MAP_STYLE = `https://tiles.openfreemap.org/styles/${matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'liberty'}`;
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 let ml = null; // the MapLibre module, loaded in the background
 let map = null;
 let myPos = null;
@@ -482,7 +743,7 @@ async function loadMapLibrary() {
     ml = await import('/vendor/maplibre-gl/maplibre-gl.mjs');
     ml.setWorkerUrl('/vendor/maplibre-gl/maplibre-gl-worker.mjs');
   } catch {
-    ml = null; // no map: Eden works exactly as before
+    ml = null; // no map: Mochii works exactly as before
     mapUnavailable = true;
   }
   if (state && shell) render();
@@ -515,7 +776,7 @@ function ensureMap() {
     areasReady = true;
     updateMap();
   });
-  setSheetOpen(!!state.card);
+  setSheetOpen(homeView === 'plans' || !!state.card);
 }
 
 function renderMapNotice() {
@@ -569,17 +830,42 @@ function circle(lon, lat, metres) {
 const pinEl = (emoji, mod) =>
   h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emoji, mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
 
+/** Spread cats sharing one coarse location in screen pixels, never by inventing GPS coordinates. */
+function catOffsets(friends) {
+  const groups = new Map();
+  const offsets = new Map();
+  for (const f of friends) {
+    if (f.kind !== 'area') continue;
+    const key = `${f.lat}:${f.lon}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f.id);
+  }
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const radius = Math.min(125, Math.max(58, ids.length * 20));
+    ids.forEach((id, i) => {
+      const angle = (i / ids.length) * 2 * Math.PI;
+      offsets.set(id, [Math.round(Math.cos(angle) * radius), Math.round(Math.sin(angle) * radius)]);
+    });
+  }
+  return offsets;
+}
+
 function updateMap() {
   if (!map || !state) return;
   const m = state.map || {};
   const items = [];
   const me = myPos ?? m.me;
-  if (me) items.push({ key: 'me', at: [me.lon, me.lat], sig: 'me', anchor: 'center', el: () => h('div', { class: 'mk-me', title: 'You' }) });
+  if (me) items.push({ key: 'me', at: [me.lon, me.lat], sig: `me:${state.me.mood || ''}`, anchor: 'bottom', el: () => h('div', { class: 'mk-me', title: 'You' }, weatherCat(state.me.mood, '', 'You'), h('span', {}, 'You')) });
+  const offsets = catOffsets(m.friends || []);
   for (const f of m.friends || []) {
+    const weather = moodInfo(f.mood);
     items.push({
-      key: `f:${f.id}:${f.kind}`, at: [f.lon, f.lat], sig: f.name, anchor: 'center',
-      el: () => h('div', { class: `mk-friend ${f.kind}` }, h('span', { class: 'av' }, initial(f.name)), h('span', { class: 'nm' }, f.kind === 'live' ? `${f.name} · on the way` : f.name)),
+      key: `f:${f.id}:${f.kind}`, at: [f.lon, f.lat], sig: `${f.name}|${f.mood || ''}`, anchor: 'bottom', offset: offsets.get(f.id),
+      el: () => h('div', { class: `mk-friend ${f.kind}` }, h('span', { class: 'av' }, weatherCat(f.mood, '', f.name), h('span', { class: 'avatar-initial' }, initial(f.name))), h('span', { class: 'nm' }, f.kind === 'live' ? `${f.name} · on the way` : f.name)),
       pop: () => h('div', { class: 'pop' }, h('b', {}, f.name),
+        weather ? h('span', { class: 'mood-chip' }, `${weather.emoji} ${weather.name} · ${weather.feeling}`) : null,
         f.kind === 'live' ? `On the way to meet you 🚶` : 'Somewhere around here. Only a rough area, never the exact spot.'),
     });
   }
@@ -597,7 +883,7 @@ function updateMap() {
     items.push({
       key: 'pin', at: [m.pin.lon, m.pin.lat], sig: `${m.pin.name}|${m.pin.emoji}`, anchor: 'bottom',
       el: () => pinEl(m.pin.emoji, 'suggested'),
-      pop: () => h('div', { class: 'pop' }, h('b', {}, m.pin.name), 'Suggested by Eden. Answer yes or no on the card.'),
+      pop: () => h('div', { class: 'pop' }, h('b', {}, m.pin.name), 'Suggested by Mochii. Answer yes or no on the card.'),
     });
   }
 
@@ -607,10 +893,11 @@ function updateMap() {
     const had = markers.get(it.key);
     if (had?.sig === it.sig) {
       had.marker.setLngLat(it.at);
+      had.marker.setOffset(it.offset || [0, 0]);
       continue;
     }
     had?.marker.remove();
-    const marker = new ml.Marker({ element: it.el(), anchor: it.anchor }).setLngLat(it.at);
+    const marker = new ml.Marker({ element: it.el(), anchor: it.anchor, offset: it.offset || [0, 0] }).setLngLat(it.at);
     if (it.pop) {
       const popup = new ml.Popup({ offset: 28, closeButton: false, maxWidth: '240px' });
       popup.on('open', () => popup.setDOMContent(it.pop())); // fresh "in 12 min" every time
@@ -628,7 +915,7 @@ function updateMap() {
     map.getSource('areas').setData({ type: 'FeatureCollection', features: areas });
   }
   // Something new on the map (a suggestion, a plan, a friend heading over)? Bring it into view.
-  const keys = items.map((it) => `${it.key}:${it.sig}`).sort().join(' ');
+  const keys = items.map((it) => `${it.key}:${it.key === 'pin' ? it.sig : ''}`).sort().join(' ');
   if (keys !== framedKeys) {
     const first = !framedKeys;
     framedKeys = keys;
@@ -646,10 +933,16 @@ function frameMap(animate) {
   if (!width || !height) return;
   const covered = shell.sheet.classList.contains('collapsed')
     ? shell.head.offsetHeight : shell.sheet.offsetHeight;
+  const navHeight = shell.nav?.offsetHeight || 0;
   const padding = {
-    top: Math.min(90, height * 0.2), left: Math.min(40, width * 0.1), right: Math.min(40, width * 0.1),
-    bottom: Math.max(0, Math.min(covered + 24, height - Math.min(90, height * 0.2) - 70)),
+    top: Math.min(210, height * 0.25), left: Math.min(54, width * 0.1), right: Math.min(54, width * 0.1),
+    bottom: Math.max(0, Math.min(covered + navHeight + 24, height - Math.min(210, height * 0.25) - 70)),
   };
+  // On wider screens the card sits at the right, so use the open map beside it.
+  if (width >= 900) {
+    padding.right = Math.min((shell.sheet.offsetWidth || 420) + 60, width * 0.55);
+    padding.bottom = 50;
+  }
   const duration = animate ? 600 : 0;
   if (points.length === 1) return map.easeTo({ center: points[0], zoom: 14, padding, duration });
   const bounds = new ml.LngLatBounds(points[0], points[0]);
@@ -676,30 +969,84 @@ function showToasts() {
 
 /* --------------------------------------------------------------------- menu */
 
-function openMenu() {
+function mountDialog(sheet, back, onClose) {
+  closeDialog?.();
+  const previous = document.activeElement;
+  sheet.setAttribute('aria-modal', 'true');
+  sheet.setAttribute('tabindex', '-1');
   const close = () => {
-    back.remove();
-    sheet.remove();
+    back.remove(); sheet.remove();
+    $app.inert = false;
+    document.removeEventListener('keydown', keys);
+    closeDialog = null;
+    if (previous?.isConnected) previous.focus();
+    onClose?.();
   };
+  const keys = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key !== 'Tab') return;
+    const buttons = [...sheet.querySelectorAll('button:not([disabled]), a[href], input')];
+    const first = buttons[0], last = buttons.at(-1);
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { e.preventDefault(); last?.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+  };
+  back.addEventListener('click', close);
+  sheet.prepend(h('button', { class: 'dialog-close icon-btn', 'aria-label': 'Close', onclick: close }, '×'));
+  document.body.append(back, sheet);
+  $app.inert = true;
+  document.addEventListener('keydown', keys);
+  closeDialog = close;
+  sheet.focus();
+}
+
+function openInvite() {
+  const address = h('input', { class: 'invite-address', 'aria-label': 'Mochii address', readonly: true, value: location.origin });
+  const copy = h('button', { class: 'btn yes', onclick: async () => {
+    try { await navigator.clipboard.writeText(address.value); copy.textContent = 'Copied. A little hello awaits!'; }
+    catch { address.select(); toast('Select and copy this address to share it with a friend.'); }
+  } }, 'Copy invite link');
+  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+  copy.disabled = local;
+  const note = h('p', { class: 'dialog-note' }, local ? 'Finding the address your friend can open on this Wi-Fi…' : 'Send this link to someone you’d like to spend a little time with.');
+  const sheet = h('section', { class: 'sheet invite-sheet', role: 'dialog', 'aria-label': 'Invite a friend' },
+    catImage(), h('span', { class: 'eyebrow' }, 'GOOD THINGS START WITH TWO'),
+    h('h2', {}, 'Make room for your people.'), h('p', {}, 'Coffee, a walk, or a little nothing together. Mochii will take care of the first step.'), address, note, copy,
+  );
+  mountDialog(sheet, h('div', { class: 'backdrop' }));
+  if (local) void api('/api/admin/state').then((r) => {
+    if (!sheet.isConnected) return;
+    if (r.ok && r.data.urls?.[0]) {
+      address.value = r.data.urls[0];
+      copy.disabled = false;
+      note.textContent = 'Your friend needs the same Wi-Fi. This local server uses a self-signed HTTPS certificate.';
+    } else {
+      copy.disabled = true;
+      note.textContent = 'No shared Wi-Fi address is available. Connect the host computer to Wi-Fi, then try again.';
+    }
+  });
+}
+
+function openMenu() {
+  const close = () => closeDialog?.();
   const geoOn = localStorage.getItem('eden.geo') === 'on';
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const permission = window.Notification?.permission;
   let pushText;
-  if (state.me.hasPush) pushText = 'On. Eden taps you when a plan needs a yes or no, even when the app is closed.';
-  else if (swReg && isApple && !standalone) pushText = 'To get nudges when Eden is closed: tap Share → "Add to Home Screen", then open Eden from your Home Screen.';
-  else if (swReg && permission === 'granted') pushText = 'On while Eden is open, even in the background.';
-  else if (swReg) pushText = 'Off. Eden only shows things while it\'s open.';
-  else pushText = 'Eden shows things while it\'s open. Nudges when it\'s closed need a trusted https address (ask your host).';
+  if (state.me.hasPush) pushText = 'On. Mochii taps you when a plan needs a yes or no, even when the app is closed.';
+  else if (swReg && isApple && !standalone) pushText = 'To get nudges when Mochii is closed: tap Share → "Add to Home Screen", then open Mochii from your Home Screen.';
+  else if (swReg && permission === 'granted') pushText = 'On while Mochii is open, even in the background.';
+  else if (swReg) pushText = 'Off. Mochii only shows things while it\'s open.';
+  else pushText = 'Mochii shows things while it\'s open. Nudges when it\'s closed need a trusted https address (ask your host).';
   const ci = state.me.checkins || {};
   const when = (t) => {
     const d = Math.round((Date.now() - t) / 864e5);
     return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
   };
   let checkinText;
-  if (ci.on !== true) checkinText = 'Off. A short check-in every two weeks helps Eden notice what you need.';
+  if (ci.on !== true) checkinText = 'Off. A short check-in every two weeks helps Mochii notice what you need.';
   else {
     checkinText = `Every two weeks${ci.lastAt ? `, last one ${when(ci.lastAt)}` : ''}. `;
-    checkinText += ci.share ? 'Shared with your care team: only your answers and how often you met up.' : 'Private: only Eden uses it.';
+    checkinText += ci.share ? 'Shared with your care team: only your answers and how often you met up.' : 'Private: only Mochii uses it.';
   }
   const checkins = async (body) => {
     close();
@@ -709,17 +1056,18 @@ function openMenu() {
   const canTurnOn = swReg && permission && permission !== 'granted' && !(isApple && !standalone);
   const turnOn = async () => {
     close();
-    if (permission === 'denied') return toast('Notifications are blocked for Eden. You can allow them in your browser settings.');
+    if (permission === 'denied') return toast('Notifications are blocked for Mochii. You can allow them in your browser settings.');
     await enablePush();
-    if (window.Notification.permission === 'granted') toast('Nudges on. Eden will tap you when a plan needs a yes or no.');
+    if (window.Notification.permission === 'granted') toast('Nudges on. Mochii will tap you when a plan needs a yes or no.');
   };
 
-  const back = h('div', { class: 'backdrop', onclick: () => close() });
+  const back = h('div', { class: 'backdrop' });
   const sheet = h('div', { class: 'sheet', role: 'dialog', 'aria-label': 'Menu' },
-    h('div', { class: 'grab' }),
+    catImage('profile-cat'),
+    h('span', { class: 'eyebrow' }, 'YOUR SPACE, YOUR PACE'),
     h('h2', {}, `Hi, ${state.me.name}`),
-    h('div', { class: 'row' }, h('b', {}, '📍 Location: '), geoOn ? 'on. Others only see roughly how far away you are.' : 'off. Eden can still suggest things, just less nearby.'),
-    !geoOn ? h('button', { class: 'btn quiet', onclick: () => (askLocation(), close()) }, 'Turn location on') : null,
+    h('div', { class: 'row' }, h('b', {}, '📍 Location: '), geoOn ? 'on. Mochii uses your location for your map and nearby plans. Your map sharing is controlled below.' : 'off. Allow location to place your cat on the map and find nearby plans.'),
+    !geoOn ? h('button', { class: 'btn quiet', onclick: () => openLocationPrompt(true) }, 'Turn location on') : null,
     h('div', { class: 'row' }, h('b', {}, '🗺️ On the map: '),
       state.map?.showArea ? 'friends see roughly where you are (about 1 km), never your exact spot.' : "hidden from friends. They only see where you'll meet for plans.",
       ' When you tap "On my way", the friend you\'re meeting sees you until you arrive.',
@@ -728,6 +1076,7 @@ function openMenu() {
       class: 'btn quiet',
       onclick: async () => {
         close();
+        if (!state.map?.showArea && localStorage.getItem('eden.geo') !== 'on') openLocationPrompt(true);
         const r = await api('/api/map', { showArea: !state.map?.showArea });
         if (r.ok) setState(r.data);
       },
@@ -748,7 +1097,7 @@ function openMenu() {
     h('button', {
       class: 'btn danger',
       onclick: async () => {
-        if (!confirm('Delete your account and everything Eden knows about you? This can\'t be undone.')) return;
+        if (!confirm('Delete your account and everything Mochii knows about you? This can\'t be undone.')) return;
         close();
         await api('/api/delete-account', {});
         localStorage.removeItem('eden.geo');
@@ -761,7 +1110,7 @@ function openMenu() {
     ),
     h('div', { class: 'row' }, 'Everything is stored on your host\'s computer. No feeds, no chat, no streaks.'),
   );
-  document.body.append(back, sheet);
+  mountDialog(sheet, back);
 }
 
 async function pause(days) {
@@ -780,28 +1129,27 @@ function renderAuth() {
   lastSent = null;
   document.body.classList.remove('home');
   shell = null;
+  homeView = 'map';
   stageKey = '';
   const signup = authMode === 'signup';
   const err = h('p', { class: 'error', role: 'alert' });
   const field = (label, attrs) => h('div', { class: 'field' }, h('label', { for: attrs.id }, label), h('input', attrs));
   const form = h('form', { class: 'auth', novalidate: true },
-    h('div', { class: 'hero' },
-      h('img', { src: '/icons/icon.svg', alt: '' }),
-      h('h1', {}, 'Eden'),
-      h('p', { class: 'tag' }, 'Eden suggests things to do with your people. You just say yes or no.'),
-    ),
+    h('span', { class: 'eyebrow' }, signup ? 'YOUR PEOPLE ARE THE POINT' : 'MAKE YOURSELF AT HOME'),
+    h('h2', {}, signup ? 'A little closer starts here.' : 'Welcome back, friend.'),
+    h('p', { class: 'form-intro' }, signup ? 'Make a little space for the people you love.' : 'Your people, your plans, and a little cat. All right here.'),
     signup ? field('Your first name', { id: 'name', name: 'name', autocomplete: 'given-name', required: true, maxlength: 30 }) : null,
     field('Username', { id: 'username', name: 'username', autocomplete: 'username', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', required: true }),
     field('Password', { id: 'password', name: 'password', type: 'password', autocomplete: signup ? 'new-password' : 'current-password', required: true }),
     err,
-    h('button', { class: 'btn yes', type: 'submit' }, signup ? 'Create my account' : 'Log in'),
+    h('button', { class: 'btn yes', type: 'submit' }, signup ? 'Find my people  →' : 'Come on in  →'),
     h('div', { class: 'switch' },
       h('button', { class: 'btn quiet', type: 'button', onclick: () => ((authMode = signup ? 'login' : 'signup'), renderAuth()) },
         signup ? 'I already have an account' : 'Create a new account'),
     ),
     h('ul', { class: 'promise' },
-      h('li', {}, '• No feeds, no chat, no streaks.'),
-      h('li', {}, '• Nothing is shared unless you say yes.'),
+      h('li', {}, '♡  A little connection. Zero pressure.'),
+      h('li', {}, '🔒  You choose what you share.'),
     ),
   );
   form.addEventListener('submit', async (e) => {
@@ -817,8 +1165,19 @@ function renderAuth() {
     }
     signedIn(r.data);
   });
-  $app.replaceChildren(form);
-  document.title = 'Eden';
+  const story = h('section', { class: 'auth-story' },
+    h('span', { class: 'story-pill' }, 'LESS SCROLLING. MORE LIVING.'),
+    h('h1', {}, 'Social media that is ', h('em', {}, 'actually social.')),
+    h('p', { class: 'story-copy' }, 'A coffee. A walk. A familiar face. Mochii turns the little “we should” moments into time together.'),
+    h('img', { class: 'together-art', src: '/icons/together.svg', alt: 'Two cozy cats sharing a coffee in the park', width: '600', height: '360' }),
+    h('div', { class: 'story-tags' }, h('span', {}, '🐾 Your kind of company'), h('span', {}, '☕ Real little plans'), h('span', {}, '♡ At your own pace')),
+  );
+  $app.replaceChildren(
+    h('header', { class: 'auth-top' }, brand(), h('span', { class: 'auth-top-note' }, 'Made for moments together.')),
+    h('div', { class: 'auth-layout' }, story, h('section', { class: 'auth-card' }, form)),
+    h('footer', { class: 'auth-footer' }, 'Small plans. Soft landings. Good company.'),
+  );
+  document.title = 'Mochii';
 }
 
 void boot();

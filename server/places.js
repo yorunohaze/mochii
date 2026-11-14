@@ -1,6 +1,6 @@
 // Finds real places for activities using OpenStreetMap (Overpass API).
 //
-// Public Overpass servers can take 20+ seconds, so Eden fetches ONE combined lookup per
+// Public Overpass servers can take 20+ seconds, so Mochii fetches ONE combined lookup per
 // neighbourhood (~2 km cell) in the background as soon as someone's location arrives, and keeps it
 // for a day. Suggestions then pick the nearest place instantly.
 // Privacy: only the cell centre is sent (never a person's exact position or name).

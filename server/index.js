@@ -1,4 +1,4 @@
-// Eden server: run it on your laptop; phones on the same Wi-Fi open the printed https:// address.
+// Mochii server: run it on your laptop; phones on the same Wi-Fi open the printed https:// address.
 //   node server/index.js          real rhythm (a couple of suggestions a day, 9:00–20:00)
 //   node server/index.js --demo   fast rhythm for testing and pitching
 import fs from 'node:fs';
@@ -41,6 +41,7 @@ const TYPES = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.wav': 'audio/wav',
+  '.ttf': 'font/ttf',
 };
 
 function send(res, status, body, type = 'text/plain; charset=utf-8', extra = {}) {
@@ -135,7 +136,7 @@ async function api(req, res, url) {
     const { name = '', username = '', password = '' } = await readJson(req);
     const n = String(name).trim().slice(0, 30);
     const un = String(username).trim().toLowerCase();
-    if (!n) return json(res, 400, { error: 'What should Eden call you?' });
+    if (!n) return json(res, 400, { error: 'What should Mochii call you?' });
     if (!USERNAME.test(un)) return json(res, 400, { error: 'Username: 3–24 letters or numbers.' });
     if (String(password).length < 6) return json(res, 400, { error: 'Password: at least 6 characters.' });
     if (Object.values(db.users).some((u) => u.username === un)) return json(res, 409, { error: 'That username is taken.' });
@@ -218,6 +219,11 @@ async function api(req, res, url) {
     case 'POST /api/map': {
       const { showArea } = await readJson(req);
       if (typeof showArea === 'boolean') engine.setShowArea(user.id, showArea);
+      return json(res, 200, engine.stateFor(user.id));
+    }
+    case 'POST /api/mood': {
+      const { mood } = await readJson(req);
+      if (!engine.setMood(user.id, mood)) return json(res, 400, { error: 'Choose a weather mood, or clear it.' });
       return json(res, 200, engine.stateFor(user.id));
     }
     case 'POST /api/pause': {
@@ -345,7 +351,7 @@ https.createServer({ key: cert.key, cert: cert.cert }, handle).listen(HTTPS_PORT
 engine.start();
 
 const urls = phoneUrls();
-console.log(`\n  🌿 Eden is running${engine.config.demo ? ' (demo rhythm: fast suggestions)' : ''}\n`);
+console.log(`\n  🐾 Mochii is running${engine.config.demo ? ' (demo rhythm: fast suggestions)' : ''}\n`);
 if (urls[0]) {
   console.log(await QRCode.toString(urls[0], { type: 'terminal', small: true }));
   console.log('  Phones on the same Wi-Fi, open:');

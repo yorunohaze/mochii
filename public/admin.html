@@ -3,21 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Eden host</title>
+    <title>Mochii host</title>
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
     <style>
-      :root {
-        --bg: #f5f1ea; --card: #fff; --alt: #ede7dc; --text: #1c2620; --muted: #5e6b63; --line: #e2dbcf;
-        --accent: #3e6b55; --soft: #dce8df; --warm: #c9714a; --warm-soft: #f6e2d6; --danger: #b5483f;
-        color-scheme: light;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0f1512; --card: #18211c; --alt: #202b25; --text: #ecf1ec; --muted: #9aa79f; --line: #2a3630;
-          --accent: #7fb59a; --soft: #22362c; --warm: #efa07c; --warm-soft: #3a2a22; --danger: #e07a70;
-          color-scheme: dark;
-        }
-      }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif; }
       .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
@@ -49,11 +37,13 @@
       .log { max-height: 260px; overflow: auto; font-size: 14px; display: grid; gap: 4px; }
       .toggle { display: inline-flex; gap: 8px; align-items: center; }
     </style>
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
   </head>
   <body>
     <div class="wrap">
       <header>
-        <h1><img src="/icons/icon.svg" alt="" /> Eden · host dashboard</h1>
+        <h1><img src="/icons/icon.svg" alt="" /> Mochii · host dashboard</h1>
         <div class="bar">
           <a href="/clinician">Care-team view</a>
           <label class="toggle"><input type="checkbox" id="demo" /> Demo rhythm (fast suggestions)</label>
@@ -72,14 +62,14 @@
         <section class="panel">
           <h2>People <span class="muted" id="count"></span></h2>
           <table>
-            <thead><tr><th>Person</th><th>Status</th><th>Eden is asking</th><th>Learned likes</th><th></th></tr></thead>
+            <thead><tr><th>Person</th><th>Status</th><th>Mochii is asking</th><th>Learned likes</th><th></th></tr></thead>
             <tbody id="people"></tbody>
           </table>
         </section>
       </div>
 
       <section class="panel">
-        <h2>Plans Eden made</h2>
+        <h2>Plans Mochii made</h2>
         <table>
           <thead><tr><th>What</th><th>Who (answers)</th><th>When</th><th>Where</th><th>Status</th><th>Fast-forward</th></tr></thead>
           <tbody id="plans"></tbody>
@@ -149,7 +139,7 @@
                   )),
                   h('td', {}, h('div', { class: 'bar' },
                     h('button', { class: 'primary', onclick: () => post('propose', { userId: u.id }) }, 'Suggest something now'),
-                    h('label', { class: 'toggle', title: 'Pretend this person has been home a lot (Eden gets gentler)' },
+                    h('label', { class: 'toggle', title: 'Pretend this person has been home a lot (Mochii gets gentler)' },
                       h('input', { type: 'checkbox', checked: u.quiet || null, onchange: (e) => post('quiet', { userId: u.id, on: e.target.checked }) }), 'quieter days'),
                     h('button', { class: 'danger', onclick: () => confirm(`Remove ${u.name}?`) && post('remove', { userId: u.id }) }, 'Remove'),
                   ),
@@ -186,7 +176,7 @@
                     : p.status === 'proposed' ? h('button', { class: 'danger', onclick: () => post('cancel', { planId: p.id }) }, 'Cancel') : null),
                 ),
               )
-            : [h('tr', {}, h('td', { colspan: 6, class: 'muted' }, 'No plans yet. Eden starts once two people have answered their first questions.'))]),
+            : [h('tr', {}, h('td', { colspan: 6, class: 'muted' }, 'No plans yet. Mochii starts once two people have answered their first questions.'))]),
         );
 
         $('log').replaceChildren(...s.log.map((l) => h('div', {}, h('span', { class: 'muted' }, `${time(l.at)}  `), l.text)));

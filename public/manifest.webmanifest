@@ -1,12 +1,12 @@
 {
-  "name": "Eden",
-  "short_name": "Eden",
-  "description": "Eden suggests things to do with your people. You just say yes or no.",
+  "name": "Mochii",
+  "short_name": "Mochii",
+  "description": "Social media that is actually social. Little plans, real company, and a cat called Mochii.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#F5F1EA",
-  "theme_color": "#3E6B55",
+  "background_color": "#FFF6E9",
+  "theme_color": "#FFF6E9",
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }

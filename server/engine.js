@@ -1,13 +1,13 @@
-// Eden's engine: Eden takes the first step, people only answer yes or no.
+// Mochii's engine: Mochii takes the first step, people only answer yes or no.
 //
 //  - It asks a few yes/no questions to learn what someone likes (and keeps learning from every answer).
 //  - It pairs people, picks an activity both are likely to enjoy, a time and a real place between them,
 //    and asks BOTH the same question at the same time. Nobody is "the one being looked after".
-//  - If anyone says no, the other person never hears a "no". Eden quietly finds another way.
+//  - If anyone says no, the other person never hears a "no". Mochii quietly finds another way.
 //  - It reminds, notices via GPS when people actually met, and asks afterwards whether it felt good.
 //  - On quieter stretches (lots of "no", not getting out, days without company) it suggests smaller,
 //    closer, lower-effort things and asks less often.
-//  - With the person's yes, a short validated check-in every two weeks (questionnaires.js) tells Eden how they've
+//  - With the person's yes, a short validated check-in every two weeks (questionnaires.js) tells Mochii how they've
 //    really been. A worrying one makes suggestions gentler; sharing it with a care team is a separate yes.
 import { ACTIVITIES, byId, SLOTS, TIME_QUESTIONS } from './activities.js';
 import { away, distance, fromYou, jitter, midpoint, roughly } from './geo.js';
@@ -110,6 +110,7 @@ export function createUser({ name, username, pass }) {
     asked: { location: false, notify: false, host: false, survey: false, prefs: [], times: [] },
     caps: { push: false, geo: 'unknown' },
     showArea: null, // friends see this person's rough area on the map: null = not asked yet
+    mood: null, // manually chosen avatar weather; no inferred mood or history
     surveysOn: null, // two-weekly check-in: null = not asked yet
     share: null, // check-ins shared with the care team: null = not asked yet
     survey: null, // the check-in in progress
@@ -160,7 +161,7 @@ export function setPause(userId, days) {
     if (c.userId === userId && c.status === 'open' && ['pref', 'time', 'host', 'care', 'survey', 'survey_consent', 'share_consent', 'area_consent'].includes(c.kind)) c.status = 'expired';
   }
   if (days > 0) u.survey = null;
-  log(days > 0 ? `${u.name} paused Eden for ${days} days` : `${u.name} is back`);
+  log(days > 0 ? `${u.name} paused Mochii for ${days} days` : `${u.name} is back`);
   changed(...Object.keys(db.users)); // remove or restore their marker on open friends' maps immediately
 }
 
@@ -239,7 +240,7 @@ function addCard(userId, card) {
   return c;
 }
 
-/** The notification for a plan question: same words and buttons as the card, answerable without opening Eden. */
+/** The notification for a plan question: same words and buttons as the card, answerable without opening Mochii. */
 function nudgeFor(c) {
   return {
     cardId: c.id,
@@ -285,15 +286,15 @@ function nextQuestion(u, { onboardingOnly }) {
   if (!u.asked.location) {
     return {
       kind: 'perm_location', emoji: '📍', action: 'location',
-      title: 'Can Eden use your location?',
-      lines: [{ icon: '🔒', text: 'To find things to do near you and your people. Others only see roughly how far away you are, never where.' }],
-      yes: 'Yes', no: 'Not now',
+      title: 'Can Mochii use your location?',
+      lines: [{ icon: '🔒', text: 'To place your cat on the map and find plans nearby. You choose separately whether friends can see your rough area.' }],
+      yes: 'Allow location', no: 'Not now',
     };
   }
   if (u.caps.push && !u.asked.notify) {
     return {
       kind: 'perm_notify', emoji: '🔔', action: 'notify',
-      title: 'Can Eden tap you on the shoulder when a plan comes up?',
+      title: 'Can Mochii tap you on the shoulder when a plan comes up?',
       lines: [{ icon: '🤫', text: 'Only for plans, never for anything else.' }],
       yes: 'Yes', no: 'Not now',
     };
@@ -330,7 +331,7 @@ function areaCard() {
     title: 'Show friends roughly where you are on the map?',
     lines: [
       { icon: '🔒', text: 'Only your neighbourhood (about 1 km), never your exact spot.' },
-      { icon: '🌙', text: "Only after you've opened Eden in the last few hours. You can hide any time from the menu (☰)." },
+      { icon: '🌙', text: "Only after you've opened Mochii in the last few hours. You can hide any time from the menu (☰)." },
     ],
     yes: 'Yes', no: 'Keep me hidden',
   };
@@ -344,6 +345,18 @@ export function setShowArea(userId, on) {
   changed(...Object.keys(db.users)); // everyone's map changes
 }
 
+const MOOD_IDS = new Set(['sunny', 'rainy', 'foggy', 'cloudy', 'stormy', 'rainbow']);
+const moodFor = (u) => MOOD_IDS.has(u.mood) ? u.mood : null;
+
+export function setMood(userId, mood) {
+  const u = db.users[userId];
+  if (!u || (mood !== null && !MOOD_IDS.has(mood))) return false;
+  u.mood = mood;
+  // stateFor only sends this weather to people who can already see the cat.
+  changed(...Object.keys(db.users));
+  return true;
+}
+
 /* -------------------------------------------------------------------- check-ins */
 
 function surveyConsentCard() {
@@ -351,7 +364,7 @@ function surveyConsentCard() {
     kind: 'survey_consent', emoji: '📋',
     title: 'Would a short check-in every two weeks be okay?',
     lines: [
-      { icon: '⏱️', text: `${SURVEY_LENGTH} quick taps about how you've been. It helps Eden notice what you need.` },
+      { icon: '⏱️', text: `${SURVEY_LENGTH} quick taps about how you've been. It helps Mochii notice what you need.` },
       { icon: '🔒', text: "It stays on your host's computer. Nobody else sees it unless you say so." },
     ],
     yes: 'Yes', no: 'Not now',
@@ -477,7 +490,7 @@ function available(u, now = Date.now()) {
 
 const proposing = new Set();
 
-/** Eden takes the first step: picks a person, an activity, a time and a place, and asks both. */
+/** Mochii takes the first step: picks a person, an activity, a time and a place, and asks both. */
 export async function propose(initiatorId, { force = false } = {}) {
   const u = db.users[initiatorId];
   const now = Date.now();
@@ -487,7 +500,7 @@ export async function propose(initiatorId, { force = false } = {}) {
   const others = Object.values(db.users).filter((v) => v.id !== u.id && !proposing.has(v.id) && available(v, now));
   if (!others.length) return null;
 
-  // Who: people Eden has seen go well together, who are near, and who haven't met in a while.
+  // Who: people Mochii has seen go well together, who are near, and who haven't met in a while.
   const scored = others.map((v) => {
     const pair = pairOf(u.id, v.id);
     const d = u.loc && v.loc ? distance(u.loc, v.loc) : null;
@@ -611,7 +624,7 @@ function proposalCard(plan, me, other) {
 /* ------------------------------------------------------------------- answers */
 
 /**
- * Returns null if the card isn't open anymore (or the answer isn't one of its options), otherwise what Eden said
+ * Returns null if the card isn't open anymore (or the answer isn't one of its options), otherwise what Mochii said
  * back (for answers tapped on a notification). Check-in cards take `value`, every other card `yes`.
  */
 export function answer(userId, cardId, yes, value) {
@@ -657,7 +670,7 @@ export function answer(userId, cardId, yes, value) {
       break;
     case 'care':
       u.careAskedAt = Date.now();
-      toast(u.id, yes ? 'Good idea. Eden will keep things gentle in the meantime 💛' : "Okay. Eden's here either way.");
+      toast(u.id, yes ? 'Good idea. Mochii will keep things gentle in the meantime 💛' : "Okay. Mochii's here either way.");
       break;
     case 'survey_consent':
       u.asked.survey = true;
@@ -669,7 +682,7 @@ export function answer(userId, cardId, yes, value) {
       break;
     case 'share_consent':
       u.share = !!yes;
-      toast(u.id, yes ? 'Shared with your care team. You can stop any time from the menu (☰).' : 'Kept private. Eden only uses it to suggest the right things.');
+      toast(u.id, yes ? 'Shared with your care team. You can stop any time from the menu (☰).' : 'Kept private. Mochii only uses it to suggest the right things.');
       break;
     case 'survey':
       onSurveyAnswer(u, c, value);
@@ -708,14 +721,14 @@ function onProposal(u, c, yes) {
     const act = byId[plan.activityId];
     toast(u.id, `It's on! ${other.name} is in too.`);
     toast(other.id, `It's on! ${u.name} is in too.`);
-    void notify(other, { title: 'Eden', body: `It's on: ${act.emoji} ${act.name} with ${u.name}` });
+    void notify(other, { title: 'Mochii', body: `It's on: ${act.emoji} ${act.name} with ${u.name}` });
     log(`✓ ${u.name} + ${other.name}: ${act.name} is on`);
   } else {
-    toast(u.id, 'Great. Eden will let you know.');
+    toast(u.id, 'Great. Mochii will let you know.');
   }
 }
 
-/** The other person never hears "no". If they'd said yes, Eden quietly lines up something else. */
+/** The other person never hears "no". If they'd said yes, Mochii quietly lines up something else. */
 function cancelPlan(plan, byUserId, reason) {
   plan.status = 'cancelled';
   plan.cancelReason = reason;
@@ -724,10 +737,10 @@ function cancelPlan(plan, byUserId, reason) {
   const by = db.users[byUserId];
   if (!other) return;
   if (reason === 'cant-today') {
-    toast(other.id, `${by?.name ?? 'Your friend'} can't make it today. That's okay. Eden will set up another time.`);
+    toast(other.id, `${by?.name ?? 'Your friend'} can't make it today. That's okay. Mochii will set up another time.`);
     other.lastProposalAt = 0;
   } else if (plan.answers[other.id] === true) {
-    toast(other.id, "That one won't work out. Eden's lining up something else 💛");
+    toast(other.id, "That one won't work out. Mochii's lining up something else 💛");
     other.lastProposalAt = 0; // try again soon, maybe with someone else
   }
   log(`✗ ${byId[plan.activityId].name} for ${plan.userIds.map((id) => db.users[id]?.name).join(' + ')} (${reason})`);
@@ -756,7 +769,7 @@ function onCheckin(u, c, yes) {
     addCard(u.id, feltCard(plan, other));
   } else {
     bump(u.prefs, plan.activityId, false, 0.5);
-    toast(u.id, "That's okay. Eden will try again another time.");
+    toast(u.id, "That's okay. Mochii will try again another time.");
   }
 }
 
@@ -891,13 +904,13 @@ export async function tick() {
         addCard(u.id, {
           kind: 'care', emoji: '🌱',
           title: 'Things have felt flat lately. Would it help to talk to someone you trust, or your therapist?',
-          lines: [{ icon: '💛', text: "Not a diagnosis. Just a thought, from Eden." }],
+          lines: [{ icon: '💛', text: "Not a diagnosis. Just a thought, from Mochii." }],
           yes: 'Maybe, yes', no: 'Not now',
         });
         continue;
       }
 
-      // Eden takes the first step.
+      // Mochii takes the first step.
       const gap = needsCompany(u) ? t.proposalGap * 0.75 : t.proposalGap * (1 + Math.min(u.noStreak, 4) * 0.5);
       if (awake && now - u.lastProposalAt >= gap && available(u, now)) {
         const plan = await propose(u.id);
@@ -963,8 +976,8 @@ function mapFor(u, now) {
   for (const v of Object.values(db.users)) {
     if (v.id === u.id || !v.loc || v.paused > now) continue;
     const plan = onTheWay(u, v, now);
-    if (plan) friends.push({ id: v.id, name: v.name, kind: 'live', lat: v.loc.lat, lon: v.loc.lon, planId: plan.id });
-    else if (v.showArea === true && now - v.loc.at < AREA_FRESH) friends.push({ id: v.id, name: v.name, kind: 'area', ...areaOf(v.loc), radius: 800 });
+    if (plan) friends.push({ id: v.id, name: v.name, kind: 'live', lat: v.loc.lat, lon: v.loc.lon, planId: plan.id, mood: moodFor(v) });
+    else if (v.showArea === true && now - v.loc.at < AREA_FRESH) friends.push({ id: v.id, name: v.name, kind: 'area', ...areaOf(v.loc), radius: 800, mood: moodFor(v) });
   }
   // The place of a suggestion that's waiting for an answer (never someone's home before both said yes).
   const card = openCards(u.id)[0];
@@ -1008,6 +1021,7 @@ export function stateFor(userId) {
   return {
     me: {
       id: u.id, name: u.name, username: u.username, paused: u.paused > now ? u.paused : 0, wantsLocation: u.asked.location, hasPush: !!u.push,
+      mood: moodFor(u),
       checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, lastAt: u.surveys?.at(-1)?.at ?? null, inProgress: !!u.survey },
     },
     card: cards[0] ? publicCard(cards[0]) : null,

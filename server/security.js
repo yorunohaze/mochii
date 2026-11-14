@@ -36,7 +36,7 @@ export async function loadOrCreateCert(ips) {
     // none yet
   }
   const notAfterDate = new Date(Date.now() + 365 * 864e5);
-  const pems = await generate([{ name: 'commonName', value: 'Eden (local)' }], {
+  const pems = await generate([{ name: 'commonName', value: 'Mochii (local)' }], {
     keySize: 2048,
     algorithm: 'sha256',
     notAfterDate,

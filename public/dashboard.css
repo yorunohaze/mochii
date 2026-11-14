@@ -1,0 +1,8 @@
+body { font-family: var(--font); background-image: radial-gradient(#d8c5b34d 1px, transparent 1px); background-size: 24px 24px; }
+h1, h2, button { font-weight: 800; }
+h1 img { width: 40px; height: 40px; border-radius: 13px; }
+.panel { border: 2px solid var(--line); border-radius: 22px; box-shadow: 0 4px 0 #5b463610; }
+button { border-width: 2px; border-radius: 12px; min-height: 38px; }
+button.primary { background: var(--peach); border-color: var(--outline); color: var(--text); box-shadow: var(--shadow); }
+a { color: var(--accent); text-underline-offset: 3px; }
+:focus-visible { outline: 3px solid #40769e; outline-offset: 3px; }

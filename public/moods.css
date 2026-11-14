@@ -1,0 +1,51 @@
+/* Small, always reachable weather control, beside the main navigation. */
+.mood-fab {
+  position: fixed; left: max(18px, env(safe-area-inset-left)); bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 15;
+  width: 70px; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  border: 2px solid var(--outline); border-radius: 19px; background: var(--card); color: var(--text); box-shadow: var(--shadow);
+  font-size: 10px; font-weight: 950; letter-spacing: 1px;
+}
+.mood-fab:hover { background: #f3edfb; }
+.mood-fab:active { transform: translateY(2px); box-shadow: none; }
+.mood-fab-icon { font-size: 24px; line-height: 1.1; }
+.mood-sheet { max-width: 480px; gap: 12px; }
+.mood-sheet h2 { margin: 0; }
+.mood-intro { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.mood-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mood-option {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 5px;
+  border: 1.5px solid var(--line); border-radius: 18px; color: var(--text); background: var(--card);
+  transition: background 120ms, transform 120ms;
+}
+.mood-option:hover { transform: translateY(-2px); border-color: var(--outline); }
+.mood-option[aria-pressed="true"] { background: #eee7fa; border: 2px solid var(--outline); box-shadow: 0 3px 0 #5b463622; }
+.mood-option[aria-pressed="true"]::after { content: '✓'; position: absolute; top: 5px; right: 7px; font-size: 13px; font-weight: 900; }
+.mood-option .weather-cat { width: 72px; height: 99px; }
+.mood-option strong { font-size: 13px; font-weight: 900; }
+.mood-option > span { font-size: 10px; color: var(--muted); }
+.mood-option:disabled { opacity: .6; cursor: wait; }
+.mood-status { margin: 0; font-size: 12px; color: var(--muted); }
+.mood-status:empty { display: none; }
+.mood-sharing { padding: 14px; background: #edf3e7; border: 1px solid #d0dfc9; border-radius: 17px; }
+.mood-sharing b { font-size: 13px; }
+.mood-sharing p { font-size: 11px; line-height: 1.5; margin: 7px 0 0; color: var(--muted); }
+.mood-sharing .btn { padding: 6px 0; margin-top: 4px; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; text-align: left; }
+.mood-chip { display: inline-flex; padding: 5px 8px; font-size: 11px; background: #f1eafa; border-radius: 9px; }
+
+/* Weather is part of the avatar, so it moves and updates with its person. */
+.mk-me .weather-cat { width: 70px; height: 96px; }
+.mk-friend .av { width: 65px; height: 89px; }
+.mk-friend .weather-cat { width: 65px; height: 89px; filter: drop-shadow(0 1px 3px #fffdf8); }
+.mk-friend .weather-neutral { filter: hue-rotate(275deg) saturate(.5) drop-shadow(0 1px 3px #fffdf8); }
+.mk-friend .nm { max-width: 120px; }
+.mk-me > .weather-cat + span { margin-top: -1px; }
+@media (max-width: 620px) {
+  .mood-fab { left: max(12px, env(safe-area-inset-left)); bottom: calc(12px + env(safe-area-inset-bottom)); width: 66px; min-height: 64px; border-radius: 18px; }
+  .bottom-nav { left: auto; right: 12px; transform: none; width: calc(100% - 100px); max-width: none; }
+  .nav-btn { padding-left: 2px; padding-right: 2px; font-size: 9px; }
+  .mood-sheet { padding-left: 16px; padding-right: 16px; }
+  .mood-grid { gap: 7px; }
+  .mood-option { padding: 8px 3px; }
+  .mood-option .weather-cat { width: 65px; height: 89px; }
+}
+@media (prefers-reduced-motion: reduce) { .mood-option { transition: none; } }

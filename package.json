@@ -1,8 +1,8 @@
 {
-  "name": "eden-web",
+  "name": "mochii-web",
   "version": "0.2.0",
   "private": true,
-  "description": "Eden: Eden asks, you answer yes or no. A web app you host yourself.",
+  "description": "Mochii: Mochii asks, you answer yes or no. A web app you host yourself.",
   "type": "module",
   "engines": {
     "node": ">=20"

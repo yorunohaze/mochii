@@ -1,4 +1,4 @@
-// Eden service worker: only for nudges. No offline caching, so updates show up immediately.
+// Mochii service worker: only for nudges. No offline caching, so updates show up immediately.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
@@ -30,8 +30,8 @@ self.addEventListener('push', (event) => {
     return;
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Eden', {
-      body: data.body || 'Eden has something for you.',
+    self.registration.showNotification(data.title || 'Mochii', {
+      body: data.body || 'Mochii has something for you.',
       icon: ICON,
       badge: ICON,
       tag: data.tag || 'eden',
@@ -48,10 +48,10 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const { cardId } = event.notification.data || {};
   const tapped = event.action === 'yes' || event.action === 'no';
-  event.waitUntil(cardId && tapped ? answerHere(cardId, event.action === 'yes') : openEden());
+  event.waitUntil(cardId && tapped ? answerHere(cardId, event.action === 'yes') : openMochii());
 });
 
-/** Yes or No tapped on the notification: answer without opening Eden, and pass on what Eden says back. */
+/** Yes or No tapped on the notification: answer without opening Mochii, and pass on what Mochii says back. */
 async function answerHere(cardId, yes) {
   try {
     const res = await fetch('/api/answer', {
@@ -60,16 +60,16 @@ async function answerHere(cardId, yes) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ cardId, yes }),
     });
-    if (!res.ok) return openEden(); // already answered, gone or signed out: show what's current instead
+    if (!res.ok) return openMochii(); // already answered, gone or signed out: show what's current instead
     const { reply, waiting } = await res.json();
     await badge(waiting?.length ?? 0);
-    if (reply) await self.registration.showNotification('Eden', { body: reply, icon: ICON, badge: ICON, tag: 'eden', silent: true });
+    if (reply) await self.registration.showNotification('Mochii', { body: reply, icon: ICON, badge: ICON, tag: 'eden', silent: true });
   } catch {
-    return openEden();
+    return openMochii();
   }
 }
 
-async function openEden() {
+async function openMochii() {
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   for (const w of windows) if ('focus' in w) return w.focus();
   return self.clients.openWindow('/');

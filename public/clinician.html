@@ -3,21 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Eden care team</title>
+    <title>Mochii care team</title>
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
     <style>
-      :root {
-        --bg: #f5f1ea; --card: #fff; --alt: #ede7dc; --text: #1c2620; --muted: #5e6b63; --line: #e2dbcf;
-        --accent: #3e6b55; --soft: #dce8df; --warm: #c9714a; --warm-soft: #f6e2d6; --danger: #b5483f; --danger-soft: #f3d9d5;
-        color-scheme: light;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0f1512; --card: #18211c; --alt: #202b25; --text: #ecf1ec; --muted: #9aa79f; --line: #2a3630;
-          --accent: #7fb59a; --soft: #22362c; --warm: #efa07c; --warm-soft: #3a2a22; --danger: #e07a70; --danger-soft: #3d2320;
-          color-scheme: dark;
-        }
-      }
       * { box-sizing: border-box; }
       body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif; }
       .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
@@ -47,18 +35,20 @@
       .error { color: var(--danger); }
       .refs li { margin-bottom: 4px; }
     </style>
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
   </head>
   <body>
     <div class="wrap">
       <header>
-        <h1><img src="/icons/icon.svg" alt="" /> Eden · care team view</h1>
+        <h1><img src="/icons/icon.svg" alt="" /> Mochii · care team view</h1>
         <a href="/admin">Host dashboard</a>
       </header>
       <p class="muted">
         People who chose to share their check-ins, compared only with their own earlier answers. A quick look between visits to see
         who might need a call. It is not a diagnosis.
       </p>
-      <p class="muted" id="ai-off" hidden>AI summaries are off. Set <code>ANTHROPIC_API_KEY</code> on this computer and restart Eden to turn them on.</p>
+      <p class="muted" id="ai-off" hidden>AI summaries are off. Set <code>ANTHROPIC_API_KEY</code> on this computer and restart Mochii to turn them on.</p>
       <div id="people"></div>
       <p class="muted" id="others"></p>
 
@@ -115,7 +105,7 @@
           const data = await r.json();
           if (data.error) errors.set(id, data.error);
         } catch {
-          errors.set(id, "Couldn't reach Eden.");
+          errors.set(id, "Couldn't reach Mochii.");
         }
         writing.delete(id);
         await refresh();
@@ -191,7 +181,7 @@
             ? s.people.map((p) => person(p, s.aiReady))
             : [h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Nobody has shared their check-ins yet. People are asked after their first check-in, and can change it in their menu (☰).'))]),
         );
-        $('others').textContent = s.notSharing ? `${s.notSharing} ${s.notSharing === 1 ? 'person uses' : 'people use'} Eden without sharing. They don't appear here.` : '';
+        $('others').textContent = s.notSharing ? `${s.notSharing} ${s.notSharing === 1 ? 'person uses' : 'people use'} Mochii without sharing. They don't appear here.` : '';
       }
 
       async function refresh() {

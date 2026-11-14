@@ -1,11 +1,11 @@
-// The validated questionnaires behind Eden's check-in (every two weeks, one question per card).
+// The validated questionnaires behind Mochii's check-in (every two weeks, one question per card).
 // Wording, answer options and scoring are the published ones: changing them would break the validation.
 // Full references, cut-offs and the reasoning behind them: CHECKINS.md.
 //
 //   WHO-5  wellbeing over the last two weeks. Topp et al. 2015, doi:10.1159/000376585
 //   PHQ-8  depression symptoms over the last two weeks. Kroenke et al. 2009, doi:10.1016/j.jad.2008.06.026
 //          This is the PHQ-9 without item 9 (thoughts of self-harm). The PHQ-8 is meant for settings where nobody can
-//          respond to a worrying answer in time, which is Eden's situation. Wu et al. 2020 (doi:10.1017/S0033291719001314)
+//          respond to a worrying answer in time, which is Mochii's situation. Wu et al. 2020 (doi:10.1017/S0033291719001314)
 //          found its accuracy close to the PHQ-9's.
 //   TILS   Three-Item Loneliness Scale, often called "UCLA-3". Hughes et al. 2004, doi:10.1177/0164027504268574
 // PHQ licence: "No permission required to reproduce, translate, display or distribute" (phqscreeners.com).

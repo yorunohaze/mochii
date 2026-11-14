@@ -1,6 +1,6 @@
-// Optional Web Push, so Eden can reach people when the app is closed.
+// Optional Web Push, so Mochii can reach people when the app is closed.
 // Works when the page is served over *trusted* HTTPS (e.g. a tunnel) and, on iPhone,
-// when Eden is added to the Home Screen (iOS 16.4+).
+// when Mochii is added to the Home Screen (iOS 16.4+).
 import fs from 'node:fs';
 import path from 'node:path';
 
