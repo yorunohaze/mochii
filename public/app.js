@@ -313,23 +313,30 @@ function cardView(c) {
   const lines = (c.lines || []).map((l) => {
     if (l.when) return h('li', {}, h('span', { class: 'i' }, l.icon || '🕒'), fmtWhen(l.when));
     if (l.map) return h('li', {}, h('span', { class: 'i' }, l.icon || '🗺️'), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
+    if (l.tel) return h('li', {}, h('span', { class: 'i' }, l.icon || '📞'), h('a', { class: 'map', href: `tel:${l.tel}` }, l.text));
     return h('li', {}, h('span', { class: 'i' }, l.icon || '•'), l.text);
   });
-  const yes = h('button', { class: 'btn yes', onclick: () => onAnswer(c, true, el) }, c.yes || 'Yes');
-  const no = h('button', { class: 'btn no', onclick: () => onAnswer(c, false, el) }, c.no || 'No');
+  // Check-in questions keep their published answer options; everything else is yes or no.
+  const answers = c.options
+    ? h('div', { class: 'answers options' }, c.options.map((o) => h('button', { class: 'btn option', onclick: () => onAnswer(c, true, el, o.value) }, o.label)))
+    : h('div', { class: 'answers' },
+        h('button', { class: 'btn yes', onclick: () => onAnswer(c, true, el) }, c.yes || 'Yes'),
+        h('button', { class: 'btn no', onclick: () => onAnswer(c, false, el) }, c.no || 'No'),
+      );
   el.append(
     ...[
-      h('div', { class: 'from' }, 'Eden asks'),
+      h('div', { class: 'from' }, c.progress || 'Eden asks'),
       c.emoji ? h('div', { class: 'emoji', 'aria-hidden': 'true' }, c.emoji) : null,
+      c.note ? h('p', { class: 'note' }, c.note) : null,
       h('h1', {}, c.title),
       lines.length ? h('ul', { class: 'lines' }, lines) : null,
-      h('div', { class: 'answers' }, yes, no),
+      answers,
     ].filter(Boolean),
   );
   return el;
 }
 
-async function onAnswer(card, yes, el) {
+async function onAnswer(card, yes, el, value) {
   if (busy) return;
   busy = true;
   // Browser permission prompts have to start inside the tap.
@@ -337,7 +344,7 @@ async function onAnswer(card, yes, el) {
   if (yes && card.action === 'notify') void enablePush();
   el.querySelectorAll('button').forEach((b) => (b.disabled = true));
   el.classList.add(yes ? 'leaving-yes' : 'leaving-no');
-  const [r] = await Promise.all([api('/api/answer', { cardId: card.id, yes }), wait(320)]);
+  const [r] = await Promise.all([api('/api/answer', { cardId: card.id, yes, value }), wait(320)]);
   busy = false;
   if (r.data && r.ok) setState(r.data);
   else {
@@ -402,6 +409,22 @@ function openMenu() {
   else if (swReg && permission === 'granted') pushText = 'On while Eden is open, even in the background.';
   else if (swReg) pushText = 'Off. Eden only shows things while it\'s open.';
   else pushText = 'Eden shows things while it\'s open. Nudges when it\'s closed need a trusted https address (ask your host).';
+  const ci = state.me.checkins || {};
+  const when = (t) => {
+    const d = Math.round((Date.now() - t) / 864e5);
+    return d === 0 ? 'today' : d === 1 ? 'yesterday' : `${d} days ago`;
+  };
+  let checkinText;
+  if (ci.on !== true) checkinText = 'Off. A short check-in every two weeks helps Eden notice what you need.';
+  else {
+    checkinText = `Every two weeks${ci.lastAt ? `, last one ${when(ci.lastAt)}` : ''}. `;
+    checkinText += ci.share ? 'Shared with your care team: only your answers and how often you met up.' : 'Private: only Eden uses it.';
+  }
+  const checkins = async (body) => {
+    close();
+    const r = await api('/api/checkins', body);
+    if (r.ok) setState(r.data);
+  };
   const canTurnOn = swReg && permission && permission !== 'granted' && !(isApple && !standalone);
   const turnOn = async () => {
     close();
@@ -418,6 +441,13 @@ function openMenu() {
     !geoOn ? h('button', { class: 'btn quiet', onclick: () => (askLocation(), close()) }, 'Turn location on') : null,
     h('div', { class: 'row' }, h('b', {}, '🔔 Nudges: '), pushText),
     canTurnOn ? h('button', { class: 'btn quiet', onclick: turnOn }, 'Turn nudges on') : null,
+    h('div', { class: 'row' }, h('b', {}, '📋 Check-ins: '), checkinText),
+    ci.on !== true ? h('button', { class: 'btn quiet', onclick: () => checkins({ on: true }) }, 'Start check-ins') : null,
+    ci.on === true && !ci.inProgress ? h('button', { class: 'btn quiet', onclick: () => checkins({ start: true }) }, 'Do a check-in now') : null,
+    ci.on === true
+      ? h('button', { class: 'btn quiet', onclick: () => checkins({ share: !ci.share }) }, ci.share ? 'Stop sharing with my care team' : 'Share with my care team')
+      : null,
+    ci.on === true ? h('button', { class: 'btn quiet', onclick: () => checkins({ on: false }) }, 'Stop check-ins') : null,
     state.me.paused
       ? h('button', { class: 'btn quiet', onclick: () => (pause(0), close()) }, "I'm back")
       : h('button', { class: 'btn quiet', onclick: () => (pause(3), close()) }, 'Take a break for 3 days'),
@@ -432,7 +462,11 @@ function openMenu() {
         signedOut();
       },
     }, 'Delete my account'),
-    h('div', { class: 'row' }, 'Everything is stored on your host\'s computer, nowhere else. No feeds, no chat, no streaks.'),
+    h('div', { class: 'row' },
+      h('b', {}, '🆘 Need to talk to someone now? '),
+      'MIELI Crisis Helpline ', h('a', { href: 'tel:+358925250111' }, '09 2525 0111'), ' (24/7). In an emergency, call ', h('a', { href: 'tel:112' }, '112'), '.',
+    ),
+    h('div', { class: 'row' }, 'Everything is stored on your host\'s computer. No feeds, no chat, no streaks.'),
   );
   document.body.append(back, sheet);
 }

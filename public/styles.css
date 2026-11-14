@@ -104,6 +104,9 @@ a { color: var(--accent); }
 .btn:active { transform: scale(0.98); opacity: 0.85; }
 .btn.yes { background: var(--accent); color: var(--on-accent); }
 .btn.no { background: var(--card-alt); color: var(--text); }
+.answers.options { gap: 8px; }
+.btn.option { min-height: 52px; font-size: 17px; font-weight: 600; background: var(--card-alt); color: var(--text); }
+.card .note { margin: 0 0 -8px; color: var(--muted); font-size: 16px; }
 .btn.quiet { background: transparent; color: var(--accent); min-height: 48px; font-size: 17px; }
 .btn.danger { background: transparent; color: var(--danger); min-height: 48px; font-size: 17px; }
 .btn[disabled] { opacity: 0.5; }

@@ -7,10 +7,13 @@
 //  - It reminds, notices via GPS when people actually met, and asks afterwards whether it felt good.
 //  - On quieter stretches (lots of "no", not getting out, days without company) it suggests smaller,
 //    closer, lower-effort things and asks less often.
+//  - With the person's yes, a short validated check-in every two weeks (questionnaires.js) tells Eden how they've
+//    really been. A worrying one makes suggestions gentler; sharing it with a care team is a separate yes.
 import { ACTIVITIES, byId, SLOTS, TIME_QUESTIONS } from './activities.js';
 import { away, distance, fromYou, jitter, midpoint, roughly } from './geo.js';
 import { findPlace, prefetch } from './places.js';
 import { notify } from './push.js';
+import { CUT, INSTRUMENTS, needsSupport, score, SURVEY, SURVEY_LENGTH } from './questionnaires.js';
 import { newId } from './security.js';
 import { db, log, save } from './store.js';
 
@@ -22,8 +25,10 @@ const DAY = 24 * HOUR;
 
 function T() {
   return config.demo
-    ? { tick: 4e3, proposalGap: 40e3, startIn: 10 * MIN, length: 10 * MIN, remindBefore: 5 * MIN, cardTtl: 8 * MIN, prefGap: 20e3, hours: [0, 24] }
-    : { tick: 30e3, proposalGap: 8 * HOUR, startIn: null, length: null, remindBefore: 45 * MIN, cardTtl: 6 * HOUR, prefGap: 3 * HOUR, hours: [9, 20] };
+    ? { tick: 4e3, proposalGap: 40e3, startIn: 10 * MIN, length: 10 * MIN, remindBefore: 5 * MIN, cardTtl: 8 * MIN, prefGap: 20e3, hours: [0, 24],
+        surveyGap: 30 * MIN, surveyTtl: 20 * MIN, surveyRetry: 10 * MIN }
+    : { tick: 30e3, proposalGap: 8 * HOUR, startIn: null, length: null, remindBefore: 45 * MIN, cardTtl: 6 * HOUR, prefGap: 3 * HOUR, hours: [9, 20],
+        surveyGap: 14 * DAY, surveyTtl: 3 * DAY, surveyRetry: 2 * DAY };
 }
 
 /* ---------------------------------------------------------------- live updates */
@@ -102,8 +107,12 @@ export function createUser({ name, username, pass }) {
     loc: null,
     home: null,
     samples: [],
-    asked: { location: false, notify: false, host: false, prefs: [], times: [] },
+    asked: { location: false, notify: false, host: false, survey: false, prefs: [], times: [] },
     caps: { push: false, geo: 'unknown' },
+    surveysOn: null, // two-weekly check-in: null = not asked yet
+    share: null, // check-ins shared with the care team: null = not asked yet
+    survey: null, // the check-in in progress
+    surveys: [],
     paused: 0,
     noStreak: 0,
     feltNo: 0,
@@ -147,8 +156,9 @@ export function setPause(userId, days) {
   if (!u) return;
   u.paused = days > 0 ? Date.now() + days * DAY : 0;
   for (const c of Object.values(db.cards)) {
-    if (c.userId === userId && c.status === 'open' && ['pref', 'time', 'host', 'care'].includes(c.kind)) c.status = 'expired';
+    if (c.userId === userId && c.status === 'open' && ['pref', 'time', 'host', 'care', 'survey', 'survey_consent', 'share_consent'].includes(c.kind)) c.status = 'expired';
   }
+  if (days > 0) u.survey = null;
   log(days > 0 ? `${u.name} paused Eden for ${days} days` : `${u.name} is back`);
   changed(userId);
 }
@@ -184,9 +194,11 @@ function estimateHome(u) {
 }
 
 /** Within-person signals only: compared with the person's own routine, never with others. */
-function needsCompany(u) {
+export function needsCompany(u) {
   if (u.quiet) return true; // dashboard demo switch
   if (u.noStreak >= 2) return true;
+  const last = u.surveys?.at(-1);
+  if (last && Date.now() - last.at < 28 * DAY && needsSupport(last)) return true;
   const since = Date.now() - (u.lastDoneAt || u.createdAt);
   if (since > 4 * DAY) return true;
   if (u.home) {
@@ -198,7 +210,10 @@ function needsCompany(u) {
 
 /* ----------------------------------------------------------------------- cards */
 
-const PRIORITY = { reminder: 0, proposal: 1, checkin: 2, felt: 3, care: 4, perm_location: 5, perm_notify: 6, host: 7, pref: 8, time: 8 };
+const PRIORITY = {
+  reminder: 0, proposal: 1, checkin: 2, felt: 3, care: 4, share_consent: 4.5, survey: 4.6,
+  perm_location: 5, perm_notify: 6, host: 7, survey_consent: 7.5, pref: 8, time: 8,
+};
 // Plan questions: each one also reaches the phone as a notification with the card's own yes/no.
 const PUSHED = new Set(['proposal', 'reminder', 'checkin', 'felt']);
 // Someone else is waiting on these, so they're delivered right away and stay on screen until answered.
@@ -289,6 +304,8 @@ function nextQuestion(u, { onboardingOnly }) {
     };
   }
   if (onboardingOnly) return null;
+  if (!u.asked.survey) return surveyConsentCard();
+  if (u.surveys?.length && u.share == null) return shareCard();
   const pref = ACTIVITIES.find((a) => !u.asked.prefs.includes(a.id));
   if (pref) return prefCard(pref.id);
   const slot = Object.keys(TIME_QUESTIONS).find((s) => !u.asked.times.includes(s));
@@ -299,6 +316,127 @@ function nextQuestion(u, { onboardingOnly }) {
 function prefCard(activityId) {
   const a = byId[activityId];
   return { kind: 'pref', activityId, emoji: a.emoji, title: a.ask, lines: [], yes: 'Yes', no: 'Not really' };
+}
+
+/* -------------------------------------------------------------------- check-ins */
+
+function surveyConsentCard() {
+  return {
+    kind: 'survey_consent', emoji: '📋',
+    title: 'Would a short check-in every two weeks be okay?',
+    lines: [
+      { icon: '⏱️', text: `${SURVEY_LENGTH} quick taps about how you've been. It helps Eden notice what you need.` },
+      { icon: '🔒', text: "It stays on your host's computer. Nobody else sees it unless you say so." },
+    ],
+    yes: 'Yes', no: 'Not now',
+  };
+}
+
+function shareCard() {
+  return {
+    kind: 'share_consent', emoji: '🩺',
+    title: 'Share your check-ins with your care team?',
+    lines: [
+      { icon: '📋', text: 'Only your check-in answers and how often you met up with people.' },
+      { icon: '🔒', text: 'Never where you go, who you met or what you planned. You can stop any time from the menu (☰).' },
+      { icon: '🤖', text: 'If your care team uses AI summaries, the AI sees the numbers, never your name.' },
+    ],
+    yes: 'Yes, share', no: 'Keep it private',
+  };
+}
+
+/** After a heavy check-in. Reuses the "care" card, so answering it works the same way. */
+function supportCard() {
+  return {
+    kind: 'care', emoji: '💛',
+    title: 'The last two weeks sound heavy. Would it help to talk to your care team or someone you trust?',
+    lines: [
+      { icon: '📞', tel: '+358925250111', text: 'MIELI Crisis Helpline 09 2525 0111 (24/7)' },
+      { icon: '🚑', tel: '112', text: 'If you feel unsafe right now, call 112' },
+    ],
+    yes: 'Maybe, yes', no: 'Not now',
+  };
+}
+
+function startSurvey(u) {
+  u.survey = { id: newId(), startedAt: Date.now(), answers: {} };
+}
+
+function surveyDue(u, now) {
+  if (!u.surveysOn || u.survey) return false;
+  const last = u.surveys?.at(-1)?.at ?? 0;
+  return now - last >= T().surveyGap && now - (u.surveyDroppedAt || 0) >= T().surveyRetry;
+}
+
+/** The next unanswered question of the check-in in progress, as a card with the published answer options. */
+function nextSurveyCard(u, now) {
+  if (now - u.survey.startedAt > T().surveyTtl) {
+    u.survey = null; // left half-done: start fresh another day (the questions are about the last two weeks)
+    u.surveyDroppedAt = now;
+    return null;
+  }
+  let step = 1;
+  for (const id of SURVEY) {
+    const inst = INSTRUMENTS[id];
+    const got = u.survey.answers[id] ?? [];
+    const item = inst.items.findIndex((_, i) => got[i] == null);
+    if (item >= 0) {
+      return {
+        kind: 'survey', surveyId: u.survey.id, instrument: id, item,
+        title: inst.items[item], note: inst.stem, options: inst.options,
+        progress: `Check-in · ${step + item} of ${SURVEY_LENGTH}`,
+        lines: [], expiresAt: u.survey.startedAt + T().surveyTtl,
+      };
+    }
+    step += inst.items.length;
+  }
+  return null;
+}
+
+/** Straight after the previous answer, so the next question is already there when the card flies off. */
+function queueSurveyCard(u) {
+  const q = u.survey && nextSurveyCard(u, Date.now());
+  if (q) addCard(u.id, q);
+}
+
+function onSurveyAnswer(u, c, value) {
+  if (u.survey?.id !== c.surveyId) return;
+  (u.survey.answers[c.instrument] ??= [])[c.item] = value;
+  const done = SURVEY.every((id) => INSTRUMENTS[id].items.every((_, i) => u.survey.answers[id]?.[i] != null));
+  if (done) finishSurvey(u);
+  else queueSurveyCard(u);
+}
+
+function finishSurvey(u) {
+  const entry = { id: newId(), at: Date.now() };
+  for (const id of SURVEY) entry[id] = { items: u.survey.answers[id], score: score(id, u.survey.answers[id]) };
+  (u.surveys ??= []).push(entry);
+  if (u.surveys.length > 100) u.surveys.splice(0, u.surveys.length - 100);
+  u.survey = null;
+  log(`📋 ${u.name} finished a check-in`); // never the answers: the host log is visible to whoever runs the laptop
+  if (entry.phq8.score >= CUT.phq8High) addCard(u.id, supportCard());
+  else toast(u.id, "Thanks. That's it for two weeks 💛");
+  if (u.share == null) addCard(u.id, shareCard());
+}
+
+export function setSurveys(userId, { on, share, start }) {
+  const u = db.users[userId];
+  if (!u) return;
+  if (on != null) {
+    u.surveysOn = !!on;
+    u.asked.survey = true;
+    if (!on) {
+      u.survey = null;
+      for (const c of Object.values(db.cards)) if (c.userId === userId && c.status === 'open' && c.kind === 'survey') c.status = 'expired';
+    }
+  }
+  if (share != null) u.share = !!share;
+  if (u.surveysOn && !u.survey && (start || (on && surveyDue(u, Date.now())))) {
+    startSurvey(u);
+    queueSurveyCard(u);
+  }
+  changed(userId);
+  setTimeout(() => void tick(), 300);
 }
 
 /* ---------------------------------------------------------------- the initiator */
@@ -446,14 +584,18 @@ function proposalCard(plan, me, other) {
 
 /* ------------------------------------------------------------------- answers */
 
-/** Returns null if the card isn't open anymore, otherwise what Eden said back (for answers tapped on a notification). */
-export function answer(userId, cardId, yes) {
+/**
+ * Returns null if the card isn't open anymore (or the answer isn't one of its options), otherwise what Eden said
+ * back (for answers tapped on a notification). Check-in cards take `value`, every other card `yes`.
+ */
+export function answer(userId, cardId, yes, value) {
   const c = db.cards[cardId];
   const u = db.users[userId];
   if (!c || !u || c.userId !== userId || c.status !== 'open') return null;
+  if (c.options && !c.options.some((o) => o.value === value)) return null;
   const seen = new Set((u.toasts || []).map((t) => t.id));
   c.status = 'answered';
-  c.answer = !!yes;
+  c.answer = c.options ? value : !!yes;
   c.answeredAt = Date.now();
 
   switch (c.kind) {
@@ -490,6 +632,21 @@ export function answer(userId, cardId, yes) {
     case 'care':
       u.careAskedAt = Date.now();
       toast(u.id, yes ? 'Good idea. Eden will keep things gentle in the meantime 💛' : "Okay. Eden's here either way.");
+      break;
+    case 'survey_consent':
+      u.asked.survey = true;
+      u.surveysOn = !!yes;
+      if (yes) {
+        startSurvey(u);
+        queueSurveyCard(u);
+      } else toast(u.id, 'Okay. You can start check-ins any time from the menu (☰).');
+      break;
+    case 'share_consent':
+      u.share = !!yes;
+      toast(u.id, yes ? 'Shared with your care team. You can stop any time from the menu (☰).' : 'Kept private. Eden only uses it to suggest the right things.');
+      break;
+    case 'survey':
+      onSurveyAnswer(u, c, value);
       break;
   }
   changed(userId);
@@ -694,10 +851,10 @@ export async function tick() {
           continue;
         }
       }
-      if (open.length) continue;
+      if (open.some((c) => c.kind !== 'survey')) continue; // one thing at a time, but a half-done check-in never blocks plans
 
       // Feeling flat after several outings? Suggest support, gently, at most once a week.
-      if (u.feltNo >= 3 && now - (u.careAskedAt || 0) > 7 * DAY) {
+      if (!open.length && u.feltNo >= 3 && now - (u.careAskedAt || 0) > 7 * DAY) {
         addCard(u.id, {
           kind: 'care', emoji: '🌱',
           title: 'Things have felt flat lately. Would it help to talk to someone you trust, or your therapist?',
@@ -712,6 +869,17 @@ export async function tick() {
       if (awake && now - u.lastProposalAt >= gap && available(u, now)) {
         const plan = await propose(u.id);
         if (plan) continue;
+      }
+      if (open.length) continue; // a check-in question is waiting
+
+      // The two-weekly check-in, one question at a time, whenever nothing else needs an answer.
+      if (u.survey || surveyDue(u, now)) {
+        if (!u.survey) startSurvey(u);
+        const q = nextSurveyCard(u, now);
+        if (q) {
+          addCard(u.id, q);
+          continue;
+        }
       }
 
       // Otherwise, now and then, one more thing to learn about them.
@@ -771,7 +939,10 @@ export function stateFor(userId) {
       };
     });
   return {
-    me: { id: u.id, name: u.name, username: u.username, paused: u.paused > now ? u.paused : 0, wantsLocation: u.asked.location, hasPush: !!u.push },
+    me: {
+      id: u.id, name: u.name, username: u.username, paused: u.paused > now ? u.paused : 0, wantsLocation: u.asked.location, hasPush: !!u.push,
+      checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, lastAt: u.surveys?.at(-1)?.at ?? null, inProgress: !!u.survey },
+    },
     card: cards[0] ? publicCard(cards[0]) : null,
     waiting: cards.filter((c) => PUSHED.has(c.kind)).map((c) => c.id), // plan questions with a notification out
     plans,
@@ -785,6 +956,7 @@ function publicCard(c) {
   return {
     id: c.id, kind: c.kind, emoji: c.emoji, title: c.title, lines: c.lines ?? [], yes: c.yes, no: c.no, action: c.action ?? null,
     nudge: PUSHED.has(c.kind) ? nudgeFor(c) : null,
+    options: c.options ?? null, note: c.note ?? null, progress: c.progress ?? null,
   };
 }
 
@@ -805,6 +977,7 @@ export function adminState() {
     locationAge: u.loc ? now - u.loc.at : null,
     push: !!u.push,
     canHost: u.canHost,
+    checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, inProgress: !!u.survey },
     openCard: openCards(u.id)[0]?.title ?? null,
     likes: ACTIVITIES.map((a) => ({ id: a.id, emoji: a.emoji, name: a.name, p: mean(beta(u.prefs, a.id)), n: Math.round(beta(u.prefs, a.id).a + beta(u.prefs, a.id).b - 2) }))
       .sort((x, y) => y.p - x.p),
@@ -879,5 +1052,54 @@ export const admin = {
     }
     void prefetch(center);
   },
+  /** Start a check-in now, or ask the person whether check-ins are okay if they haven't said yes yet. */
+  survey(userId) {
+    const u = db.users[userId];
+    if (!u) return;
+    if (u.surveysOn) return setSurveys(userId, { start: true });
+    if (!openCards(userId).some((c) => c.kind === 'survey_consent')) addCard(userId, surveyConsentCard());
+  },
+  /**
+   * Four made-up check-ins, two weeks apart, so the care-team view has a history to show in a demo.
+   * Marked as sample data everywhere they appear.
+   */
+  sample(userId, trend) {
+    const u = db.users[userId];
+    if (!u) return;
+    const curves = {
+      steady: { who5: [60, 64, 60, 68], phq8: [5, 4, 6, 4], tils: [4, 4, 5, 4] },
+      slipping: { who5: [68, 60, 48, 36], phq8: [4, 6, 10, 14], tils: [4, 5, 6, 7] },
+    };
+    const curve = curves[trend] ?? curves.steady;
+    const now = Date.now();
+    u.surveys = (u.surveys ?? []).filter((s) => !s.sample);
+    for (let k = 0; k < 4; k++) {
+      const entry = { id: newId(), at: now - (3 - k) * 14 * DAY - DAY, sample: true };
+      for (const id of SURVEY) {
+        const inst = INSTRUMENTS[id];
+        const values = inst.options.map((o) => o.value);
+        const total = id === 'who5' ? curve.who5[k] / 4 : curve[id][k];
+        const items = spread(total, inst.items.length, Math.min(...values), Math.max(...values));
+        entry[id] = { items, score: score(id, items) };
+      }
+      u.surveys.push(entry);
+    }
+    u.surveys.sort((a, b) => a.at - b.at);
+    log(`📋 Sample check-ins added for ${u.name} (${trend === 'slipping' ? 'slipping' : 'steady'})`);
+    changed(userId);
+  },
   remove: removeUser,
 };
+
+/** Item answers between min and max that add up to total, spread evenly. */
+function spread(total, n, min, max) {
+  const items = Array(n).fill(min);
+  let left = Math.min(total, n * max) - n * min;
+  for (let i = 0; left > 0; i = (i + 1) % n) {
+    if (items[i] < max) {
+      items[i]++;
+      left--;
+    }
+  }
+  return items;
+}
