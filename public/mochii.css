@@ -213,3 +213,28 @@ body.home.has-map .card { padding: 6px 2px 2px; border: 0; border-radius: 0; bac
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------- Your people: groups, codes, stranger mode ---------- */
+.groups-sheet { max-height: min(88dvh, 860px); overflow-y: auto; }
+.groups-sheet .groups-intro { font-size: 14px; line-height: 1.6; color: var(--muted); margin: 0; }
+.group-card { display: grid; gap: 10px; padding: 16px; background: var(--card); border: 2px solid var(--outline); border-radius: 20px; box-shadow: 3px 3px 0 #4e382c22; }
+.group-card.care-card { border-color: #9cbfa7; background: var(--soft); }
+.group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.group-head h3 { margin: 0; font-size: 18px; font-weight: 900; }
+.group-size { font-size: 12px; color: var(--muted); font-weight: 800; white-space: nowrap; }
+.member-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.member-chips .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; border-radius: 999px; }
+.chip-x { border: 0; background: none; color: var(--danger); font-weight: 900; font-size: 15px; line-height: 1; padding: 0 2px; cursor: pointer; }
+.group-code { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-radius: 14px; background: var(--warm-soft); }
+.group-code span { font-size: 11px; font-weight: 900; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; }
+.group-code strong { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 22px; letter-spacing: 2px; color: var(--text); }
+.group-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.group-actions .btn { width: auto; min-height: 40px; padding: 0 14px; font-size: 14px; }
+.group-form { display: grid; gap: 8px; padding: 14px; border: 1.5px dashed #bba28a; border-radius: 18px; }
+.group-form b { font-size: 14px; }
+.groups-sheet .invite-address { width: 100%; text-align: left; }
+.code-input { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 1.5px; text-transform: uppercase; text-align: center !important; font-size: 16px; }
+.stranger-row .btn { margin-top: 8px; width: 100%; }
+.invite-banner { padding: 12px 14px; border-radius: 14px; background: var(--soft); border: 1.5px solid #9cbfa7; font-size: 14px; font-weight: 700; line-height: 1.5; }
+.invite-banner[hidden] { display: none; }
+.chip.chip-danger { color: var(--danger); border-color: #e5b5bb; background: var(--danger-soft); cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }

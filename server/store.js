@@ -1,4 +1,5 @@
-// Tiny JSON-file database. Everything lives on the host's own machine in ./data.
+// Tiny JSON-file database, kept in memory and written to ./data (or EDEN_DATA_DIR). Fine for one server process
+// and a few thousand people; a bigger deployment would move this to a real database.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -7,7 +8,7 @@ export const DATA_DIR = process.env.EDEN_DATA_DIR
   : path.resolve(import.meta.dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'db.json');
 
-const empty = () => ({ users: {}, sessions: {}, cards: {}, plans: {}, pairs: {}, log: [] });
+const empty = () => ({ users: {}, sessions: {}, cards: {}, plans: {}, pairs: {}, groups: {}, reports: [], log: [] });
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 

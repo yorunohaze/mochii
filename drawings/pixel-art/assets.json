@@ -1,0 +1,327 @@
+{
+  "assetCount": 32,
+  "generator": "Built-in image_gen",
+  "resampling": "nearest-neighbor; transparent contain padding",
+  "assets": [
+    {
+      "file": "activities/coffee.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 23551
+    },
+    {
+      "file": "activities/cooking.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 23687
+    },
+    {
+      "file": "activities/games.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 25688
+    },
+    {
+      "file": "activities/groceries.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 32363
+    },
+    {
+      "file": "activities/gym.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 14822
+    },
+    {
+      "file": "activities/movie.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 19717
+    },
+    {
+      "file": "activities/sauna.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 29061
+    },
+    {
+      "file": "activities/study.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 22602
+    },
+    {
+      "file": "activities/swimming.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 29224
+    },
+    {
+      "file": "activities/walk.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 23580
+    },
+    {
+      "file": "app-icons/apple-touch-icon.png",
+      "width": 180,
+      "height": 180,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 37393
+    },
+    {
+      "file": "app-icons/icon-192.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 41592
+    },
+    {
+      "file": "app-icons/icon-512.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 255281
+    },
+    {
+      "file": "cat.png",
+      "width": 640,
+      "height": 680,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 342455
+    },
+    {
+      "file": "logo.png",
+      "width": 512,
+      "height": 512,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 255281
+    },
+    {
+      "file": "mood-neutral.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 19960
+    },
+    {
+      "file": "moods/cloudy.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 382861
+    },
+    {
+      "file": "moods/foggy.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 363621
+    },
+    {
+      "file": "moods/rainbow.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 432591
+    },
+    {
+      "file": "moods/rainy.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 400640
+    },
+    {
+      "file": "moods/stormy.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 402921
+    },
+    {
+      "file": "moods/sunny.png",
+      "width": 640,
+      "height": 880,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 363360
+    },
+    {
+      "file": "navigation/nav-explore.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 23355
+    },
+    {
+      "file": "navigation/nav-plans.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 19709
+    },
+    {
+      "file": "navigation/nav-space.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 19960
+    },
+    {
+      "file": "together.png",
+      "width": 1800,
+      "height": 1080,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 1457487
+    },
+    {
+      "file": "weather/cloudy.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 13126
+    },
+    {
+      "file": "weather/foggy.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 16975
+    },
+    {
+      "file": "weather/rainbow.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 254,
+      "bytes": 20620
+    },
+    {
+      "file": "weather/rainy.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 22613
+    },
+    {
+      "file": "weather/stormy.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 17648
+    },
+    {
+      "file": "weather/sunny.png",
+      "width": 192,
+      "height": 192,
+      "format": "png",
+      "hasAlpha": true,
+      "alphaMin": 0,
+      "alphaMax": 255,
+      "bytes": 21288
+    }
+  ]
+}

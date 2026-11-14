@@ -9,7 +9,12 @@
 //    closer, lower-effort things and asks less often.
 //  - With the person's yes, a short validated check-in every two weeks (questionnaires.js) tells Mochii how they've
 //    really been. A worrying one makes suggestions gentler; sharing it with a care team is a separate yes.
+//  - It only ever pairs people who share a friend group, or two people who both turned on stranger mode (18+, public
+//    places in daytime, no homes, no live location, a safety question afterwards).
 import { ACTIVITIES, byId, SLOTS, TIME_QUESTIONS } from './activities.js';
+import {
+  allGroups, allReports, block, blocked, connected, createPairGroup, friendIdsOf, groupsFor, groupsOf, removeUserFromGroups,
+} from './circles.js';
 import { away, distance, fromYou, jitter, midpoint, roughly } from './geo.js';
 import { findPlace, prefetch } from './places.js';
 import { notify } from './push.js';
@@ -38,7 +43,11 @@ export const onChange = (fn) => listeners.add(fn);
 
 function changed(...ids) {
   save();
-  for (const id of new Set(ids)) for (const fn of listeners) fn(id);
+  for (const id of new Set(ids)) {
+    // A revision per person, so a phone can tell a late, older snapshot from a newer one and ignore it.
+    if (db.users[id]) db.users[id].rev = (db.users[id].rev || 0) + 1;
+    for (const fn of listeners) fn(id);
+  }
 }
 
 function toast(userId, text) {
@@ -107,7 +116,10 @@ export function createUser({ name, username, pass }) {
     loc: null,
     home: null,
     samples: [],
-    asked: { location: false, notify: false, host: false, survey: false, prefs: [], times: [] },
+    asked: { location: false, notify: false, host: false, survey: false, strangers: false, prefs: [], times: [] },
+    stranger: { on: false, adult: false }, // stranger mode: opt-in, adults only
+    blocked: [],
+    clinician: false, // set by the server operator; lets this account start care teams
     caps: { push: false, geo: 'unknown' },
     showArea: null, // friends see this person's rough area on the map: null = not asked yet
     mood: null, // manually chosen avatar weather; no inferred mood or history
@@ -141,9 +153,21 @@ export function removeUser(userId) {
   for (const [id, c] of Object.entries(db.cards)) if (c.userId === userId) delete db.cards[id];
   for (const [t, s] of Object.entries(db.sessions)) if (s.userId === userId) delete db.sessions[t];
   for (const k of Object.keys(db.pairs)) if (k.split('|').includes(userId)) delete db.pairs[k];
+  const others = audienceOf(userId).filter((id) => id !== userId);
+  removeUserFromGroups(userId);
   delete db.users[userId];
   log(`${u.name} deleted their account`);
-  changed(userId, ...Object.keys(db.users));
+  changed(userId, ...others);
+}
+
+/**
+ * Whose screens change when this person's cat, area or weather changes: themself, people they share a friend group
+ * with, and anyone they're meeting right now. Nobody else on the server.
+ */
+function audienceOf(userId) {
+  const ids = new Set([userId, ...friendIdsOf(userId)]);
+  for (const p of activePlans(userId)) for (const id of p.userIds) ids.add(id);
+  return [...ids].filter((id) => db.users[id]);
 }
 
 export function setCaps(userId, caps) {
@@ -162,7 +186,7 @@ export function setPause(userId, days) {
   }
   if (days > 0) u.survey = null;
   log(days > 0 ? `${u.name} paused Mochii for ${days} days` : `${u.name} is back`);
-  changed(...Object.keys(db.users)); // remove or restore their marker on open friends' maps immediately
+  changed(...audienceOf(userId)); // remove or restore their marker on open friends' maps immediately
 }
 
 export function updateLocation(userId, { lat, lon, acc }) {
@@ -172,7 +196,7 @@ export function updateLocation(userId, { lat, lon, acc }) {
   const cellBefore = u.loc && now - u.loc.at < AREA_FRESH ? areaKey(u.loc) : null;
   u.loc = { lat, lon, acc: Number.isFinite(acc) ? acc : 50, at: now };
   // Friends' maps only change when this person crosses into another ~1 km area, or moves while on their way to them.
-  if (u.showArea === true && areaKey(u.loc) !== cellBefore) changed(...Object.keys(db.users).filter((id) => id !== userId));
+  if (u.showArea === true && areaKey(u.loc) !== cellBefore) changed(...friendIdsOf(userId));
   for (const p of activePlans(userId)) if (p.status === 'confirmed' && p.going[userId]) changed(otherOf(p, userId)?.id);
   const last = u.samples[u.samples.length - 1];
   if (!last || now - last.at > 10 * MIN || distance(last, u.loc) > 75) {
@@ -217,8 +241,9 @@ export function needsCompany(u) {
 /* ----------------------------------------------------------------------- cards */
 
 const PRIORITY = {
-  reminder: 0, proposal: 1, checkin: 2, felt: 3, care: 4, share_consent: 4.5, survey: 4.6,
-  perm_location: 5, perm_notify: 6, host: 7, survey_consent: 7.5, area_consent: 7.6, pref: 8, time: 8,
+  reminder: 0, proposal: 1, checkin: 2, felt: 3, safety: 3.2, keep: 3.4, care: 4, share_consent: 4.5, survey: 4.6,
+  perm_location: 5, perm_notify: 6, host: 7, stranger_offer: 7.2, stranger_adult: 7.3, survey_consent: 7.5,
+  area_consent: 7.6, pref: 8, time: 8,
 };
 // Plan questions: each one also reaches the phone as a notification with the card's own yes/no.
 const PUSHED = new Set(['proposal', 'reminder', 'checkin', 'felt']);
@@ -310,9 +335,11 @@ function nextQuestion(u, { onboardingOnly }) {
     };
   }
   if (onboardingOnly) return null;
+  // Nobody to make plans with yet? Offer to meet new people, once. Friends can still invite them any time.
+  if (!u.asked.strangers && !friendIdsOf(u.id).size && !u.stranger?.on) return strangerOfferCard();
   if (!u.asked.survey) return surveyConsentCard();
-  if (u.surveys?.length && u.share == null) return shareCard();
-  if (u.loc && !u.asked.area) return areaCard();
+  if (u.surveys?.length && u.share == null && careTeamsOf(u.id).length) return shareCard(u);
+  if (u.loc && !u.asked.area && friendIdsOf(u.id).size) return areaCard();
   const pref = ACTIVITIES.find((a) => !u.asked.prefs.includes(a.id));
   if (pref) return prefCard(pref.id);
   const slot = Object.keys(TIME_QUESTIONS).find((s) => !u.asked.times.includes(s));
@@ -325,12 +352,131 @@ function prefCard(activityId) {
   return { kind: 'pref', activityId, emoji: a.emoji, title: a.ask, lines: [], yes: 'Yes', no: 'Not really' };
 }
 
+/* ------------------------------------------------------------------ stranger mode */
+
+function strangerOfferCard() {
+  return {
+    kind: 'stranger_offer', emoji: '🌱',
+    title: 'Want Mochii to introduce you to someone new nearby?',
+    lines: [
+      { icon: '👥', text: 'Only other adults who also said yes. First names only.' },
+      { icon: '☕', text: 'Coffee, a walk, the gym or studying, at a public place, in daytime. Never anyone’s home.' },
+      { icon: '🛡️', text: 'They never see where you are. You can stop any time from the menu (☰).' },
+    ],
+    yes: 'Yes, sounds nice', no: 'Not now',
+  };
+}
+
+function adultCard() {
+  return {
+    kind: 'stranger_adult', emoji: '🪪',
+    title: 'Are you 18 or older?',
+    lines: [{ icon: '🌱', text: 'Meeting new people is for adults only.' }],
+    yes: "Yes, I'm 18+", no: 'No',
+  };
+}
+
+/** Turn stranger mode on or off. On needs an "I'm 18 or older". */
+export function setStranger(userId, { on, adult }) {
+  const u = db.users[userId];
+  if (!u) return { error: 'Not signed in.' };
+  u.asked.strangers = true;
+  if (adult === true) u.stranger = { ...u.stranger, adult: true };
+  if (on && !u.stranger?.adult) return { error: 'Stranger mode is for adults (18+).' };
+  u.stranger = { ...u.stranger, on: !!on, since: on ? Date.now() : null };
+  if (!on) {
+    // Pending stranger suggestions go away; plans already agreed stay (cancel them like any plan).
+    for (const p of Object.values(db.plans)) if (p.mode === 'stranger' && p.status === 'proposed' && p.userIds.includes(userId)) cancelPlan(p, userId, 'declined');
+  }
+  log(`${u.name} turned stranger mode ${on ? 'on' : 'off'}`);
+  changed(userId);
+  return { ok: true };
+}
+
+const strangerReady = (u) => !!(u?.stranger?.on && u.stranger.adult && u.loc);
+
+/** Block (and optionally report) someone: any plan between them ends, and Mochii never pairs them again. */
+export function blockUser(userId, otherId, report = false) {
+  for (const p of Object.values(db.plans)) {
+    if (p.userIds.includes(userId) && p.userIds.includes(otherId) && ['proposed', 'confirmed'].includes(p.status)) {
+      p.status = 'cancelled';
+      p.cancelReason = 'blocked';
+      expireCards(p.id);
+    }
+  }
+  block(userId, otherId, { report, reason: report ? 'Reported from the app' : '' });
+  changed(userId, otherId);
+}
+
+function safetyCard(plan, other) {
+  return {
+    kind: 'safety', planId: plan.id, emoji: '🛡️',
+    title: `Did you feel safe with ${other?.name ?? 'them'}?`,
+    lines: [{ icon: '🤫', text: `${other?.name ?? 'They'} won't be told what you answer. A no means you're never matched again, and Mochii's team takes a look.` }],
+    yes: 'Yes', no: 'No',
+  };
+}
+
+function keepCard(plan, other) {
+  return {
+    kind: 'keep', planId: plan.id, emoji: '🤝',
+    title: `Stay in touch with ${other?.name ?? 'them'}?`,
+    lines: [{ icon: '🐾', text: "If you both say yes, you'll be friends on Mochii and can make plans again. If not, nobody is told." }],
+    yes: 'Yes', no: 'No thanks',
+  };
+}
+
+function onSafety(u, c, yes) {
+  const plan = db.plans[c.planId];
+  if (!plan) return;
+  const other = otherOf(plan, u.id);
+  if (!other) return;
+  if (yes) {
+    addCard(u.id, keepCard(plan, other));
+    return;
+  }
+  block(u.id, other.id, { report: true, reason: 'Did not feel safe after a stranger-mode meet-up', planId: plan.id });
+  for (const k of Object.values(db.cards)) if (k.planId === plan.id && k.kind === 'keep' && k.status === 'open') k.status = 'expired';
+  toast(u.id, `Thank you for telling us. You won't be matched with ${other.name} again, and Mochii's team will take a look.`);
+}
+
+function onKeep(u, c, yes) {
+  const plan = db.plans[c.planId];
+  if (!plan) return;
+  const other = otherOf(plan, u.id);
+  (plan.keep ??= {})[u.id] = !!yes;
+  if (!yes || !other || blocked(u.id, other.id)) return;
+  if (plan.keep[other.id] === true && createPairGroup(other.id, u.id)) {
+    toast(u.id, `You and ${other.name} are now friends on Mochii 🐾`);
+    toast(other.id, `You and ${u.name} are now friends on Mochii 🐾`);
+    changed(u.id, other.id);
+  }
+}
+
+/* ---------------------------------------------------------------- care teams */
+
+export const careTeamsOf = (userId) => groupsOf(userId, 'care').filter((g) => g.members[userId]?.role === 'patient');
+
+/** Joined a care team after already doing check-ins: ask about sharing straight away. */
+export function joinedCareTeam(userId) {
+  const u = db.users[userId];
+  if (!u) return;
+  if (u.share == null && u.surveys?.length && !openCards(userId).some((c) => c.kind === 'share_consent')) addCard(userId, shareCard(u));
+  changed(userId);
+}
+
+/** Group membership changed (joined, left, removed): refresh everyone in that group. */
+export function groupChanged(userIds) {
+  changed(...userIds.filter((id) => db.users[id]));
+  setTimeout(() => void tick(), 300);
+}
+
 function areaCard() {
   return {
     kind: 'area_consent', emoji: '🗺️',
-    title: 'Show friends roughly where you are on the map?',
+    title: 'Show people in your groups roughly where you are on the map?',
     lines: [
-      { icon: '🔒', text: 'Only your neighbourhood (about 1 km), never your exact spot.' },
+      { icon: '🔒', text: 'Only your neighbourhood (about 1 km), never your exact spot. Nobody outside your groups.' },
       { icon: '🌙', text: "Only after you've opened Mochii in the last few hours. You can hide any time from the menu (☰)." },
     ],
     yes: 'Yes', no: 'Keep me hidden',
@@ -342,7 +488,7 @@ export function setShowArea(userId, on) {
   if (!u) return;
   u.showArea = !!on;
   u.asked.area = true;
-  changed(...Object.keys(db.users)); // everyone's map changes
+  changed(...audienceOf(userId)); // their friends' maps change
 }
 
 const MOOD_IDS = new Set(['sunny', 'rainy', 'foggy', 'cloudy', 'stormy', 'rainbow']);
@@ -353,7 +499,7 @@ export function setMood(userId, mood) {
   if (!u || (mood !== null && !MOOD_IDS.has(mood))) return false;
   u.mood = mood;
   // stateFor only sends this weather to people who can already see the cat.
-  changed(...Object.keys(db.users));
+  changed(...audienceOf(userId));
   return true;
 }
 
@@ -365,20 +511,23 @@ function surveyConsentCard() {
     title: 'Would a short check-in every two weeks be okay?',
     lines: [
       { icon: '⏱️', text: `${SURVEY_LENGTH} quick taps about how you've been. It helps Mochii notice what you need.` },
-      { icon: '🔒', text: "It stays on your host's computer. Nobody else sees it unless you say so." },
+      { icon: '🔒', text: 'It stays private. Nobody sees it, not your friends and not your groups. Only a care team you join can, and only if you say yes.' },
     ],
     yes: 'Yes', no: 'Not now',
   };
 }
 
-function shareCard() {
+function shareCard(u) {
+  const teams = careTeamsOf(u.id).map((g) => g.name);
+  const named = teams.length ? teams.join(' and ') : 'your care team';
   return {
     kind: 'share_consent', emoji: '🩺',
-    title: 'Share your check-ins with your care team?',
+    title: `Share your check-ins with ${named}?`,
     lines: [
       { icon: '📋', text: 'Only your check-in answers and how often you met up with people.' },
       { icon: '🔒', text: 'Never where you go, who you met or what you planned. You can stop any time from the menu (☰).' },
-      { icon: '🤖', text: 'If your care team uses AI summaries, the AI sees the numbers, never your name.' },
+      { icon: '👩‍⚕️', text: `Only the clinicians in ${named}. Never your friends, groups or other patients.` },
+      { icon: '🤖', text: 'If they use AI summaries, the AI sees the numbers, never your name.' },
     ],
     yes: 'Yes, share', no: 'Keep it private',
   };
@@ -452,10 +601,10 @@ function finishSurvey(u) {
   (u.surveys ??= []).push(entry);
   if (u.surveys.length > 100) u.surveys.splice(0, u.surveys.length - 100);
   u.survey = null;
-  log(`📋 ${u.name} finished a check-in`); // never the answers: the host log is visible to whoever runs the laptop
+  log(`📋 ${u.name} finished a check-in`); // never the answers: the server log is visible to the operator
   if (entry.phq8.score >= CUT.phq8High) addCard(u.id, supportCard());
   else toast(u.id, "Thanks. That's it for two weeks 💛");
-  if (u.share == null) addCard(u.id, shareCard());
+  if (u.share == null && careTeamsOf(u.id).length) addCard(u.id, shareCard(u));
 }
 
 export function setSurveys(userId, { on, share, start }) {
@@ -469,7 +618,7 @@ export function setSurveys(userId, { on, share, start }) {
       for (const c of Object.values(db.cards)) if (c.userId === userId && c.status === 'open' && c.kind === 'survey') c.status = 'expired';
     }
   }
-  if (share != null) u.share = !!share;
+  if (share != null) u.share = !!share && careTeamsOf(userId).length > 0;
   if (u.surveysOn && !u.survey && (start || (on && surveyDue(u, Date.now())))) {
     startSurvey(u);
     queueSurveyCard(u);
@@ -497,7 +646,14 @@ export async function propose(initiatorId, { force = false } = {}) {
   if (!u || proposing.has(u.id) || (!force && !available(u, now))) return null;
   if (force && (u.paused > now || activePlans(u.id).length)) return null;
 
-  const others = Object.values(db.users).filter((v) => v.id !== u.id && !proposing.has(v.id) && available(v, now));
+  // Who can be asked: people who share a friend group with them or, in stranger mode, other adults who also said yes,
+  // live within about 6 km and were never blocked or reported by either side. Nobody else on the server.
+  const friendIds = friendIdsOf(u.id);
+  const others = Object.values(db.users).filter((v) => {
+    if (v.id === u.id || proposing.has(v.id) || !available(v, now)) return false;
+    if (friendIds.has(v.id)) return true;
+    return strangerReady(u) && strangerReady(v) && !blocked(u.id, v.id) && distance(u.loc, v.loc) < 6000;
+  });
   if (!others.length) return null;
 
   // Who: people Mochii has seen go well together, who are near, and who haven't met in a while.
@@ -507,10 +663,12 @@ export async function propose(initiatorId, { force = false } = {}) {
     const near = d == null ? 0.6 : Math.exp(-d / 8000);
     const rotation = 0.5 + 0.5 * Math.min(1, (now - (pair.last || 0)) / (3 * DAY));
     const care = needsCompany(v) ? 1.3 : 1;
-    return { v, d, score: sample(pair) * near * rotation * care };
+    const stranger = !friendIds.has(v.id);
+    return { v, d, stranger, score: sample(pair) * near * rotation * care * (stranger ? 0.6 : 1) }; // friends first
   });
   scored.sort((a, b) => b.score - a.score);
-  const { v, d } = scored[0];
+  const { v, d, stranger } = scored[0];
+  const mode = stranger ? 'stranger' : 'friends';
 
   // What: an activity both are likely to say yes to. Smaller and easier on quieter stretches.
   const low = needsCompany(u) || needsCompany(v);
@@ -519,6 +677,7 @@ export async function propose(initiatorId, { force = false } = {}) {
     .filter((p) => p.userIds.includes(u.id) && now - p.createdAt < 3 * DAY)
     .map((p) => p.activityId);
   const options = ACTIVITIES.map((act) => {
+    if (stranger && !act.strangerOk) return null; // public, daytime, low-intimacy things only
     if (act.home && (!hosts.length || (d != null && d > 15000))) return null;
     let s = sample(beta(u.prefs, act.id)) * sample(beta(v.prefs, act.id));
     if (low) s *= [1.5, 1, 0.3][act.energy];
@@ -533,7 +692,7 @@ export async function propose(initiatorId, { force = false } = {}) {
   proposing.add(u.id);
   proposing.add(v.id);
   try {
-    const { startAt, slot } = pickTime(u, v, act, now);
+    const { startAt, slot } = pickTime(u, v, act, now, mode);
     let place;
     let hostId = null;
     if (act.home) {
@@ -547,12 +706,14 @@ export async function propose(initiatorId, { force = false } = {}) {
         ? await findPlace(act, center)
         : { name: act.placeLabel, search: act.search, found: false };
     }
+    if (stranger && !place.found) return null; // strangers only ever meet at a real, named public place
     if (!(force ? db.users[u.id] : available(u)) || !available(v)) return null; // things changed while looking
 
     const length = T().length ?? act.minutes * MIN;
     const plan = {
       id: newId(),
       activityId: act.id,
+      mode,
       userIds: [u.id, v.id],
       hostId,
       slot,
@@ -571,7 +732,7 @@ export async function propose(initiatorId, { force = false } = {}) {
     u.lastProposalAt = v.lastProposalAt = now;
     const expiresAt = Math.min(now + T().cardTtl, startAt - 5 * MIN);
     for (const [me, other] of [[u, v], [v, u]]) addCard(me.id, { ...proposalCard(plan, me, other), expiresAt });
-    log(`Asked ${u.name} + ${v.name}: ${act.emoji} ${act.name}${low ? ' (gentle)' : ''} · ${place.name}`);
+    log(`Asked ${u.name} + ${v.name}${stranger ? ' (stranger mode)' : ''}: ${act.emoji} ${act.name}${low ? ' (gentle)' : ''} · ${place.name}`);
     return plan;
   } finally {
     proposing.delete(u.id);
@@ -579,14 +740,16 @@ export async function propose(initiatorId, { force = false } = {}) {
   }
 }
 
-function pickTime(u, v, act, now) {
+function pickTime(u, v, act, now, mode = 'friends') {
   if (config.demo) {
     const startAt = Math.ceil((now + T().startIn) / (5 * MIN)) * 5 * MIN;
     return { startAt, slot: slotOf(new Date(startAt).getHours()) };
   }
   const options = [];
   for (let day = 0; day < 3; day++) {
-    for (const slot of act.times) {
+    // Meeting someone new: daytime only.
+    const slots = mode === 'stranger' ? act.times.filter((x) => x !== 'evening') : act.times;
+    for (const slot of slots.length ? slots : ['afternoon']) {
       const t = new Date(now);
       t.setDate(t.getDate() + day);
       t.setHours(SLOTS[slot].hour, 0, 0, 0);
@@ -611,13 +774,23 @@ function placeLine(plan, me, other) {
   return p.name;
 }
 
+const sharedGroup = (a, b) => groupsOf(a, 'friends').find((g) => g.members[b]) ?? null;
+
 function proposalCard(plan, me, other) {
   const act = byId[plan.activityId];
   const lines = [
     { icon: '🕒', when: plan.startAt },
     { icon: '📍', text: placeLine(plan, me, other) },
   ];
-  if (me.loc && other.loc) lines.push({ icon: '👋', text: `${other.name} is ${away(distance(me.loc, other.loc))}` });
+  if (plan.mode === 'stranger') {
+    // Someone new: no distance to them, no map, first name only.
+    lines.unshift({ icon: '🌱', text: `Someone new: ${other.name}, who also wants to meet people` });
+    lines.push({ icon: '🛡️', text: 'A public place, in daytime. Leave whenever you like.' });
+  } else {
+    const group = sharedGroup(me.id, other.id);
+    if (group) lines.push({ icon: '👥', text: group.name });
+    if (me.loc && other.loc) lines.push({ icon: '👋', text: `${other.name} is ${away(distance(me.loc, other.loc))}` });
+  }
   return { kind: 'proposal', planId: plan.id, emoji: act.emoji, title: act.propose(other.name), lines, yes: "Yes, let's", no: 'Not this time' };
 }
 
@@ -687,11 +860,32 @@ export function answer(userId, cardId, yes, value) {
     case 'survey':
       onSurveyAnswer(u, c, value);
       break;
+    case 'safety':
+      onSafety(u, c, !!yes);
+      break;
+    case 'keep':
+      onKeep(u, c, !!yes);
+      break;
+    case 'stranger_offer':
+      u.asked.strangers = true;
+      if (!yes) toast(u.id, 'Okay. You can turn on stranger mode any time from the menu (☰), or join friends with a code.');
+      else if (u.stranger?.adult) setStranger(u.id, { on: true });
+      else addCard(u.id, adultCard());
+      break;
+    case 'stranger_adult':
+      if (yes) {
+        setStranger(u.id, { on: true, adult: true });
+        toast(u.id, "Stranger mode is on. Mochii will introduce you to someone new when there's a good match 🌱");
+      } else {
+        u.stranger = { ...u.stranger, on: false, adult: false };
+        toast(u.id, 'Okay, stranger mode stays off. Friends can still invite you with a code.');
+      }
+      break;
     case 'area_consent':
       u.asked.area = true;
       u.showArea = !!yes;
       toast(u.id, yes ? 'Friends now see your rough area on the map.' : "You're hidden on the map. Plans still show where you'll meet.");
-      changed(...Object.keys(db.users));
+      changed(...audienceOf(u.id));
       break;
   }
   changed(userId);
@@ -793,6 +987,7 @@ function onFelt(u, c, yes) {
     u.feltNo += 1;
     toast(u.id, 'Thanks for being honest. Some days are like that.');
   }
+  if (plan.mode === 'stranger' && other) addCard(u.id, safetyCard(plan, other));
 }
 
 function feltCard(plan, other) {
@@ -837,7 +1032,9 @@ function sendReminders(plan) {
         { icon: '🕒', when: plan.startAt },
         { icon: '📍', text: placeLine(plan, me, other) },
         ...(showMap ? [{ icon: '🗺️', map: { lat: plan.place.lat, lon: plan.place.lon, name: plan.place.name, search: plan.place.search } }] : []),
-        ...(showMap ? [{ icon: '👀', text: `"On my way" lets ${other.name} see you on the map until you meet.` }] : []),
+        ...(plan.mode === 'stranger'
+          ? [{ icon: '🛡️', text: 'Meet inside the place. It helps to tell someone you trust where you’re going.' }]
+          : showMap ? [{ icon: '👀', text: `"On my way" lets ${other.name} see you on the map until you meet.` }] : []),
       ],
       yes: plan.place.home && plan.hostId === id ? 'Yes' : 'On my way',
       no: "Can't today",
@@ -857,6 +1054,18 @@ function endPlan(plan) {
 }
 
 let running = false;
+let prunedAt = 0;
+
+/** Keeps the in-memory store small: answered cards after 35 days, finished plans after 60, idle sessions after 60. */
+export function prune(now = Date.now()) {
+  prunedAt = now;
+  for (const [id, c] of Object.entries(db.cards)) if (c.status !== 'open' && now - c.createdAt > 35 * DAY) delete db.cards[id];
+  for (const [id, p] of Object.entries(db.plans)) {
+    if (['done', 'cancelled'].includes(p.status) && now - p.createdAt > 60 * DAY) delete db.plans[id];
+  }
+  for (const [t, ses] of Object.entries(db.sessions)) if (now - (ses.seen ?? ses.at) > 60 * DAY || !db.users[ses.userId]) delete db.sessions[t];
+  save();
+}
 
 export async function tick() {
   if (running) return;
@@ -864,6 +1073,7 @@ export async function tick() {
   try {
     const now = Date.now();
     const t = T();
+    if (now - prunedAt > HOUR) prune(now);
 
     for (const c of Object.values(db.cards)) {
       if (c.status !== 'open' || !c.expiresAt || now < c.expiresAt) continue;
@@ -966,7 +1176,7 @@ const areaOf = (p) => ({ lat: centre(p.lat, AREA.lat), lon: centre(p.lon, AREA.l
 /** A plan where `v` tapped "On my way" to meet `u` and hasn't arrived yet: the only time `u` sees `v`'s real position. */
 function onTheWay(u, v, now) {
   return Object.values(db.plans).find(
-    (p) => p.status === 'confirmed' && p.userIds.includes(u.id) && p.userIds.includes(v.id) && p.going[v.id] && !p.together && now <= p.endAt
+    (p) => p.status === 'confirmed' && p.mode !== 'stranger' && p.userIds.includes(u.id) && p.userIds.includes(v.id) && p.going[v.id] && !p.together && now <= p.endAt
       && !(p.place.home && p.hostId === v.id) && now - v.loc.at < 10 * MIN,
   );
 }
@@ -974,7 +1184,7 @@ function onTheWay(u, v, now) {
 function mapFor(u, now) {
   const friends = [];
   for (const v of Object.values(db.users)) {
-    if (v.id === u.id || !v.loc || v.paused > now) continue;
+    if (v.id === u.id || !v.loc || v.paused > now || !connected(u.id, v.id)) continue; // only people in your groups
     const plan = onTheWay(u, v, now);
     if (plan) friends.push({ id: v.id, name: v.name, kind: 'live', lat: v.loc.lat, lon: v.loc.lon, planId: plan.id, mood: moodFor(v) });
     else if (v.showArea === true && now - v.loc.at < AREA_FRESH) friends.push({ id: v.id, name: v.name, kind: 'area', ...areaOf(v.loc), radius: 800, mood: moodFor(v) });
@@ -1007,10 +1217,12 @@ export function stateFor(userId) {
         emoji: act.emoji,
         title: `${act.name} with ${other?.name ?? 'a friend'}`,
         friend: other?.name ?? 'Your friend',
+        friendId: other?.id ?? null,
         startAt: p.startAt,
         endAt: p.endAt,
         place: { name: mine ? 'Your place' : p.place.name, lat: p.place.lat, lon: p.place.lon, search: p.place.search, map: !mine },
         together: p.together,
+        mode: p.mode ?? 'friends',
         friendNote: p.going[other?.id]
           ? p.place.home && p.hostId === other?.id
             ? `${other.name} is ready for you 🏠`
@@ -1019,17 +1231,21 @@ export function stateFor(userId) {
       };
     });
   return {
+    rev: u.rev || 0,
     me: {
       id: u.id, name: u.name, username: u.username, paused: u.paused > now ? u.paused : 0, wantsLocation: u.asked.location, hasPush: !!u.push,
       mood: moodFor(u),
       checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, lastAt: u.surveys?.at(-1)?.at ?? null, inProgress: !!u.survey },
+      stranger: { on: !!u.stranger?.on, adult: !!u.stranger?.adult },
+      clinician: !!u.clinician,
     },
+    groups: groupsFor(userId),
     card: cards[0] ? publicCard(cards[0]) : null,
     waiting: cards.filter((c) => PUSHED.has(c.kind)).map((c) => c.id), // plan questions with a notification out
     plans,
     map: mapFor(u, now),
     toasts: (u.toasts || []).filter((t) => now - t.at < 90e3),
-    people: Object.keys(db.users).length,
+    people: 1 + friendIdsOf(userId).size, // you plus everyone you can make plans with (not the whole server)
     demo: config.demo,
   };
 }
@@ -1061,6 +1277,10 @@ export function adminState() {
     canHost: u.canHost,
     checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, inProgress: !!u.survey },
     showArea: u.showArea === true,
+    clinician: !!u.clinician,
+    stranger: !!u.stranger?.on,
+    groups: groupsOf(u.id).length,
+    friends: friendIdsOf(u.id).size,
     openCard: openCards(u.id)[0]?.title ?? null,
     likes: ACTIVITIES.map((a) => ({ id: a.id, emoji: a.emoji, name: a.name, p: mean(beta(u.prefs, a.id)), n: Math.round(beta(u.prefs, a.id).a + beta(u.prefs, a.id).b - 2) }))
       .sort((x, y) => y.p - x.p),
@@ -1083,8 +1303,16 @@ export function adminState() {
       reminded: p.reminded,
       together: p.together,
       low: p.low,
+      mode: p.mode ?? 'friends',
     }));
-  return { demo: config.demo, users, plans, log: db.log.slice(0, 60) };
+  const groups = allGroups()
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 100)
+    .map((g) => ({ id: g.id, name: g.name, kind: g.kind, size: Object.keys(g.members).length, owner: db.users[g.ownerId]?.name ?? '(gone)', fromStrangerMode: !!g.fromStrangerMode, createdAt: g.createdAt }));
+  const reports = allReports().slice(0, 100).map((r) => ({
+    ...r, byName: db.users[r.by]?.name ?? '(deleted)', aboutName: db.users[r.about]?.name ?? '(deleted)', aboutUsername: db.users[r.about]?.username ?? null,
+  }));
+  return { demo: config.demo, users, plans, groups, reports, log: db.log.slice(0, 60) };
 }
 
 export const admin = {
@@ -1172,6 +1400,23 @@ export const admin = {
     changed(userId);
   },
   remove: removeUser,
+  /** Clinician accounts can start care teams; set by the server operator only. */
+  clinician(userId, on) {
+    const u = db.users[userId];
+    if (!u) return;
+    u.clinician = !!on;
+    log(`${u.name} is ${on ? 'now' : 'no longer'} a clinician account`);
+    changed(userId);
+  },
+  resolveReport(reportId) {
+    const r = allReports().find((x) => x.id === reportId);
+    if (r) r.status = 'resolved';
+    save();
+  },
+  /** Fake a stranger-mode opt-in for testing (adult confirmed). */
+  stranger(userId, on) {
+    setStranger(userId, { on: !!on, adult: true });
+  },
 };
 
 /** Item answers between min and max that add up to total, spread evenly. */

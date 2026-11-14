@@ -16,6 +16,7 @@ let locationRequest = null;
 let locationEpoch = 0;
 let lastSent = null;
 let knownWaiting = null; // plan questions already seen here, so each one nudges once
+let pendingCode = null; // an invite code from a /join/CODE link, used right after signing in
 const shownToasts = new Set(JSON.parse(sessionStorage.getItem('eden.toasts') || '[]'));
 const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
 
@@ -68,10 +69,26 @@ const MOODS = [
 ];
 const moodInfo = (id) => MOODS.find((m) => m.id === id);
 
+// Pixel-art drawings for activities, keyed by the emoji the server sends with cards, plans and map pins.
+const ACTIVITY_ART = {
+  '☕': 'coffee', '🚶': 'walk', '🍝': 'cooking', '🏋': 'gym', '🛒': 'groceries',
+  '🧖': 'sauna', '🏊': 'swimming', '🎬': 'movie', '📚': 'study', '🎲': 'games',
+};
+
+function pixelIcon(src, className = '') {
+  return h('img', { src, class: `pixel-icon ${className}`.trim(), alt: '', draggable: 'false' });
+}
+
+/** The drawing for an activity emoji; any other emoji stays as text. */
+function emojiArt(emoji) {
+  const name = typeof emoji === 'string' ? ACTIVITY_ART[emoji.replace(/️/g, '')] : null;
+  return name ? pixelIcon(`/icons/activities/${name}.png`, 'activity-art') : emoji;
+}
+
 function weatherCat(mood, className = '', name = '') {
   const weather = moodInfo(mood);
   return h('img', {
-    src: weather ? `/icons/moods/${weather.id}.svg` : '/icons/cat.svg',
+    src: weather ? `/icons/moods/${weather.id}.png` : '/icons/cat.png',
     class: `cat-art weather-cat ${className} weather-${weather?.id || 'neutral'}`,
     alt: name ? `${name}${weather ? ` · ${weather.name}, ${weather.feeling.toLowerCase()}` : ''}` : '',
     draggable: 'false',
@@ -79,12 +96,12 @@ function weatherCat(mood, className = '', name = '') {
 }
 
 function catImage(className = '', alt = '') {
-  return h('img', { src: '/icons/cat.svg', class: `cat-art ${className}`, alt, draggable: 'false' });
+  return h('img', { src: '/icons/cat.png', class: `cat-art ${className}`, alt, draggable: 'false' });
 }
 
 function brand() {
   return h('div', { class: 'brand' },
-    h('img', { src: '/icons/icon.svg', alt: '', width: '42', height: '42' }),
+    h('img', { src: '/icons/icon-192.png', alt: '', width: '42', height: '42' }),
     h('div', { class: 'brand-copy' }, h('strong', {}, 'Mochii'), h('span', {}, 'a little closer, together.')),
   );
 }
@@ -113,14 +130,46 @@ function mapsUrl({ lat, lon, name, search }) {
 /* ------------------------------------------------------------------- boot */
 
 async function boot() {
+  pendingCode = readInviteCode();
   void loadMapLibrary();
   await registerServiceWorker();
   const r = await api('/api/state');
   if (r.ok && r.data) {
     signedIn(r.data);
+    if (pendingCode) void joinWithCode(pendingCode);
   } else {
     renderAuth();
   }
+}
+
+/** /join/K7Q2-M9XT or ?code=…: remember the code (through sign-up) and tidy the address bar. */
+function readInviteCode() {
+  const m = location.pathname.match(/^\/join\/([A-Za-z0-9-]{4,20})\/?$/);
+  const fromQuery = new URLSearchParams(location.search).get('code');
+  const code = m?.[1] || fromQuery || sessionStorage.getItem('eden.invite');
+  if (m || fromQuery) history.replaceState(null, '', '/');
+  if (code) sessionStorage.setItem('eden.invite', code);
+  return code || null;
+}
+
+function clearInvite() {
+  pendingCode = null;
+  try { sessionStorage.removeItem('eden.invite'); } catch {}
+}
+
+async function joinWithCode(code) {
+  const r = await api('/api/groups/join', { code });
+  clearInvite();
+  if (!r.ok) {
+    toast(r.data?.error || "That code didn't work. Check it with the person who sent it.");
+    return false;
+  }
+  setState(r.data);
+  const g = (r.data.groups || []).find((x) => x.id === r.data.groupId);
+  if (r.data.already) toast(`You're already in ${g?.name ?? 'that group'}.`);
+  else if (g?.kind === 'care') toast(`You joined ${g.name}. Nothing is shared with them unless you say yes.`);
+  else toast(`You're in ${g?.name ?? 'the group'}! 🐾 Mochii will suggest little plans together.`);
+  return true;
 }
 
 function signedIn(data) {
@@ -194,6 +243,8 @@ function signedOut() {
 
 function setState(next) {
   if (!next) return;
+  // A slow response can arrive after a newer live update: never step back to an older snapshot.
+  if (state && Number.isFinite(next.rev) && Number.isFinite(state.rev) && next.rev < state.rev && next.me?.id === state.me?.id) return;
   const before = state ? (state.card?.id ?? null) : undefined;
   state = next;
   render();
@@ -441,7 +492,7 @@ function renderTop() {
   shell.top.replaceChildren(
     brand(),
     h('div', { class: 'top-actions' },
-      h('button', { class: 'invite-btn', onclick: openInvite }, h('span', { 'aria-hidden': 'true' }, '+'), h('span', {}, 'Invite a friend')),
+      h('button', { class: 'invite-btn', onclick: openGroups }, h('span', { 'aria-hidden': 'true' }, '+'), h('span', {}, 'Your people')),
       map ? h('button', { class: 'icon-btn', 'aria-label': 'Show everything on the map', onclick: () => frameMap(true) }, '◎') : null,
       h('button', { class: 'icon-btn', 'aria-label': 'Menu', onclick: openMenu }, '☰'),
     ),
@@ -455,7 +506,8 @@ function renderWelcome() {
       h('span', { class: 'eyebrow' }, 'YOUR LITTLE CORNER OF THE WORLD'),
       h('h2', {}, `Hey, ${state.me.name}.`),
       h('p', {}, 'Good company could be just around the corner.'),
-      h('span', { class: 'circle-count' }, h('span', { 'aria-hidden': 'true' }, '🐾'), total ? `${total} ${total === 1 ? 'person' : 'people'} to make plans with` : 'A little room for your people'),
+      h('span', { class: 'circle-count' }, h('span', { 'aria-hidden': 'true' }, total ? '🐾' : state.me.stranger?.on ? '🌱' : '🐾'),
+        total ? `${total} ${total === 1 ? 'person' : 'people'} in your groups` : state.me.stranger?.on ? 'Stranger mode is on' : 'A little room for your people'),
     ),
     weatherCat(state.me.mood, 'welcome-cat'),
   );
@@ -464,7 +516,8 @@ function renderWelcome() {
 function renderMoodButton() {
   const weather = moodInfo(state.me.mood);
   shell.mood.setAttribute('aria-label', weather ? `Mood: ${weather.name}, ${weather.feeling.toLowerCase()}. Change your weather` : 'Mood: choose your weather');
-  shell.mood.replaceChildren(h('span', { class: 'mood-fab-icon', 'aria-hidden': 'true' }, weather?.emoji || '🐾'), h('span', {}, 'MOOD'));
+  shell.mood.replaceChildren(h('span', { class: 'mood-fab-icon', 'aria-hidden': 'true' },
+    pixelIcon(weather ? `/icons/weather/${weather.id}.png` : '/icons/mood-neutral.png')), h('span', {}, 'MOOD'));
 }
 
 function openMood() {
@@ -528,13 +581,13 @@ function openMood() {
 function renderNavigation() {
   shell.nav.replaceChildren(
     ...[
-      ['map', '🗺️', 'Explore', () => selectHomeView('map')],
-      ['plans', '☕', 'Our plans', () => selectHomeView('plans')],
-      ['space', '🐾', 'My space', openMenu],
-    ].map(([id, emoji, label, action]) => h('button', {
+      ['map', 'nav-explore', 'Explore', () => selectHomeView('map')],
+      ['plans', 'nav-plans', 'Our plans', () => selectHomeView('plans')],
+      ['space', 'nav-space', 'My space', openMenu],
+    ].map(([id, icon, label, action]) => h('button', {
       class: `nav-btn${homeView === id ? ' active' : ''}`,
       'aria-current': homeView === id ? 'page' : null, onclick: action,
-    }, h('span', { class: 'nav-icon', 'aria-hidden': 'true' }, emoji), h('span', {}, label),
+    }, h('span', { class: 'nav-icon', 'aria-hidden': 'true' }, pixelIcon(`/icons/navigation/${icon}.png`)), h('span', {}, label),
     id === 'plans' && state.plans?.length ? h('span', { class: 'nav-count' }, state.plans.length) : null)),
   );
 }
@@ -584,7 +637,12 @@ function renderStage() {
       h('span', { class: 'eyebrow' }, 'NO RUSH. NO PRESSURE.'),
       state.people > 1
         ? [h('h2', {}, 'A good moment is on its way.'), h('p', {}, `Mochii will find something lovely to do with your people.${state.me.hasPush ? " We'll give you a little nudge." : ' Check back when you feel like it.'}`)]
-        : [h('h2', {}, 'Good things start with two.'), h('p', {}, 'Bring a friend along. Mochii will help turn “we should hang out” into a little plan.'), h('button', { class: 'btn yes', onclick: openInvite }, 'Invite your first friend')],
+        : [h('h2', {}, 'Good things start with two.'),
+           h('p', {}, state.me.stranger?.on
+             ? 'Stranger mode is on: Mochii will introduce you to someone new when there’s a good match. You can also start a group for your friends.'
+             : 'Start a group and share its code, or join a friend’s group with theirs. Mochii only suggests plans with people in your groups.'),
+           h('button', { class: 'btn yes', onclick: openGroups }, 'Start or join a group'),
+           !state.me.stranger?.on ? h('button', { class: 'btn quiet', onclick: () => toggleStranger(true) }, 'Or meet someone new 🌱') : null],
     ),
   );
 }
@@ -593,10 +651,10 @@ function cardView(c) {
   const serious = ['survey', 'support', 'care'].includes(c.kind);
   const el = h('article', { class: `card${serious ? ' steady' : ''}`, 'aria-label': c.title });
   const lines = (c.lines || []).map((l) => {
-    if (l.when) return h('li', {}, h('span', { class: 'i' }, l.icon || '🕒'), fmtWhen(l.when));
-    if (l.map) return h('li', {}, h('span', { class: 'i' }, l.icon || '🗺️'), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
-    if (l.tel) return h('li', {}, h('span', { class: 'i' }, l.icon || '📞'), h('a', { class: 'map', href: `tel:${l.tel}` }, l.text));
-    return h('li', {}, h('span', { class: 'i' }, l.icon || '•'), l.text);
+    if (l.when) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '🕒')), fmtWhen(l.when));
+    if (l.map) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '🗺️')), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
+    if (l.tel) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '📞')), h('a', { class: 'map', href: `tel:${l.tel}` }, l.text));
+    return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '•')), l.text);
   });
   // Check-in questions keep their published answer options; everything else is yes or no.
   const answers = c.options
@@ -608,8 +666,8 @@ function cardView(c) {
   el.append(
     ...[
       h('div', { class: 'card-heading' },
-        h('div', { class: 'from' }, h('img', { src: '/icons/icon.svg', alt: '' }), c.progress || 'A little nudge from Mochii'),
-        c.emoji ? h('span', { class: 'activity-stamp', 'aria-hidden': 'true' }, c.emoji) : null,
+        h('div', { class: 'from' }, h('img', { src: '/icons/icon-192.png', alt: '' }), c.progress || 'A little nudge from Mochii'),
+        c.emoji ? h('span', { class: 'activity-stamp', 'aria-hidden': 'true' }, emojiArt(c.emoji)) : null,
       ),
       c.note ? h('p', { class: 'note' }, c.note) : null,
       h('h1', {}, c.title),
@@ -649,13 +707,15 @@ function renderPlans() {
   shell.plans.replaceChildren(
     ...plans.map((p) =>
       h('div', { class: 'plan' },
-        h('div', { class: 'e', 'aria-hidden': 'true' }, p.emoji),
+        h('div', { class: 'e', 'aria-hidden': 'true' }, emojiArt(p.emoji)),
         h('div', { class: 't' }, p.title),
         h('div', { class: 's' }, `${fmtWhen(p.startAt)} · ${p.place.name}`),
         h('div', { class: 'chips' },
           p.together ? h('span', { class: 'chip warm' }, 'Together now ✨') : null,
           !p.together && p.friendNote ? h('span', { class: 'chip warm' }, p.friendNote) : null,
+          p.mode === 'stranger' ? h('span', { class: 'chip' }, '🌱 Someone new') : null,
           p.place.map ? h('a', { class: 'chip', href: mapsUrl(p.place), target: '_blank', rel: 'noopener' }, 'Open in Maps') : null,
+          p.mode === 'stranger' && p.friendId ? h('button', { class: 'chip chip-danger', type: 'button', onclick: () => blockFromPlan(p) }, 'Block & report') : null,
         ),
       ),
     ),
@@ -828,7 +888,7 @@ function circle(lon, lat, metres) {
 }
 
 const pinEl = (emoji, mod) =>
-  h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emoji, mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
+  h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emojiArt(emoji), mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
 
 /** Spread cats sharing one coarse location in screen pixels, never by inventing GPS coordinates. */
 function catOffsets(friends) {
@@ -865,7 +925,7 @@ function updateMap() {
       key: `f:${f.id}:${f.kind}`, at: [f.lon, f.lat], sig: `${f.name}|${f.mood || ''}`, anchor: 'bottom', offset: offsets.get(f.id),
       el: () => h('div', { class: `mk-friend ${f.kind}` }, h('span', { class: 'av' }, weatherCat(f.mood, '', f.name), h('span', { class: 'avatar-initial' }, initial(f.name))), h('span', { class: 'nm' }, f.kind === 'live' ? `${f.name} · on the way` : f.name)),
       pop: () => h('div', { class: 'pop' }, h('b', {}, f.name),
-        weather ? h('span', { class: 'mood-chip' }, `${weather.emoji} ${weather.name} · ${weather.feeling}`) : null,
+        weather ? h('span', { class: 'mood-chip' }, pixelIcon(`/icons/weather/${weather.id}.png`), `${weather.name} · ${weather.feeling}`) : null,
         f.kind === 'live' ? `On the way to meet you 🚶` : 'Somewhere around here. Only a rough area, never the exact spot.'),
     });
   }
@@ -999,31 +1059,134 @@ function mountDialog(sheet, back, onClose) {
   sheet.focus();
 }
 
-function openInvite() {
-  const address = h('input', { class: 'invite-address', 'aria-label': 'Mochii address', readonly: true, value: location.origin });
-  const copy = h('button', { class: 'btn yes', onclick: async () => {
-    try { await navigator.clipboard.writeText(address.value); copy.textContent = 'Copied. A little hello awaits!'; }
-    catch { address.select(); toast('Select and copy this address to share it with a friend.'); }
-  } }, 'Copy invite link');
-  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-  copy.disabled = local;
-  const note = h('p', { class: 'dialog-note' }, local ? 'Finding the address your friend can open on this Wi-Fi…' : 'Send this link to someone you’d like to spend a little time with.');
-  const sheet = h('section', { class: 'sheet invite-sheet', role: 'dialog', 'aria-label': 'Invite a friend' },
-    catImage(), h('span', { class: 'eyebrow' }, 'GOOD THINGS START WITH TWO'),
-    h('h2', {}, 'Make room for your people.'), h('p', {}, 'Coffee, a walk, or a little nothing together. Mochii will take care of the first step.'), address, note, copy,
+let inviteBase = null;
+async function getInviteBase() {
+  if (inviteBase) return inviteBase;
+  const r = await api('/api/info');
+  inviteBase = r.data?.publicUrl || (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? r.data?.inviteBase : null) || location.origin;
+  return inviteBase;
+}
+
+/** "Your people": your groups with their codes, start a group, join with a code, stranger mode. */
+function openGroups() {
+  const groups = state.groups || [];
+  const friends = groups.filter((g) => g.kind === 'friends');
+  const care = groups.filter((g) => g.kind === 'care');
+  const status = h('p', { class: 'dialog-note', role: 'status' });
+  const reopen = (data) => { setState(data); closeDialog?.(); openGroups(); };
+
+  const nameInput = h('input', { class: 'invite-address', 'aria-label': 'Group name', placeholder: 'e.g. Sunday walkers', maxlength: 40, autocomplete: 'off' });
+  const create = h('button', { class: 'btn yes', type: 'button', onclick: async () => {
+    const name = nameInput.value.trim();
+    if (!name) { status.textContent = 'Give your group a name first.'; nameInput.focus(); return; }
+    create.disabled = true;
+    const r = await api('/api/groups', { name });
+    create.disabled = false;
+    if (!r.ok) { status.textContent = r.data?.error || 'Could not start the group. Try again.'; return; }
+    reopen(r.data);
+    toast(`“${name}” is ready. Share its link or code to invite people.`);
+  } }, 'Start a group');
+
+  const codeInput = h('input', { class: 'invite-address code-input', 'aria-label': 'Invite code', placeholder: 'K7Q2-M9XT', autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false', maxlength: 80 });
+  const join = h('button', { class: 'btn quiet', type: 'button', onclick: async () => {
+    if (!codeInput.value.trim()) { status.textContent = 'Type the code your friend sent you.'; codeInput.focus(); return; }
+    join.disabled = true;
+    const ok = await joinWithCode(codeInput.value);
+    join.disabled = false;
+    if (ok) { closeDialog?.(); openGroups(); }
+  } }, 'Join with a code');
+
+  const sheet = h('section', { class: 'sheet groups-sheet', role: 'dialog', 'aria-label': 'Your people' },
+    catImage(),
+    h('span', { class: 'eyebrow' }, 'GOOD THINGS START WITH TWO'),
+    h('h2', {}, 'Your people'),
+    h('p', { class: 'groups-intro' }, 'Mochii only suggests plans with people in your groups, and only they can see your cat on the map.'),
+    ...friends.map((g) => groupCard(g, reopen)),
+    h('div', { class: 'group-form' }, h('b', {}, friends.length ? 'Start another group' : 'Start a group for your friends'), nameInput, create),
+    h('div', { class: 'group-form' }, h('b', {}, 'Got a code from a friend?'), codeInput, join),
+    ...care.map((g) => careCard(g, reopen)),
+    strangerRow(),
+    status,
   );
   mountDialog(sheet, h('div', { class: 'backdrop' }));
-  if (local) void api('/api/admin/state').then((r) => {
-    if (!sheet.isConnected) return;
-    if (r.ok && r.data.urls?.[0]) {
-      address.value = r.data.urls[0];
-      copy.disabled = false;
-      note.textContent = 'Your friend needs the same Wi-Fi. This local server uses a self-signed HTTPS certificate.';
-    } else {
-      copy.disabled = true;
-      note.textContent = 'No shared Wi-Fi address is available. Connect the host computer to Wi-Fi, then try again.';
+}
+
+function groupCard(g, reopen) {
+  const link = h('input', { class: 'invite-address', readonly: true, 'aria-label': `Invite link for ${g.name}`, value: `/join/${g.code}` });
+  void getInviteBase().then((base) => { link.value = `${base}/join/${g.code}`; });
+  const share = h('button', { class: 'btn yes', type: 'button', onclick: async () => {
+    const url = link.value;
+    const text = `Join “${g.name}” on Mochii, so we can make little plans together: ${url} (code ${g.code})`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Mochii', text, url }); return; } catch { /* closed the share sheet */ }
     }
-  });
+    try { await navigator.clipboard.writeText(url); share.textContent = 'Link copied ✓'; }
+    catch { link.select(); toast('Select and copy the link to share it.'); }
+  } }, 'Share invite link');
+  const act = (path, body, question) => async () => {
+    if (question && !confirm(question)) return;
+    const r = await api(path, body);
+    if (r.ok) reopen(r.data);
+    else toast(r.data?.error || 'That didn’t work. Try again.');
+  };
+  return h('article', { class: 'group-card', 'aria-label': g.name },
+    h('div', { class: 'group-head' }, h('h3', {}, g.name), h('span', { class: 'group-size' }, `${g.size} ${g.size === 1 ? 'person' : 'people'}`)),
+    g.fromStrangerMode ? h('p', { class: 'dialog-note' }, '🌱 You met in stranger mode.') : null,
+    h('div', { class: 'member-chips' }, ...g.members.map((m) => h('span', { class: 'chip' },
+      m.you ? `${m.name} (you)` : m.name,
+      g.mine && !m.you ? h('button', { class: 'chip-x', type: 'button', 'aria-label': `Remove ${m.name}`, onclick: act('/api/groups/remove', { groupId: g.id, userId: m.id }, `Remove ${m.name} from ${g.name}?`) }, '×') : null))),
+    h('div', { class: 'group-code' }, h('span', {}, 'Invite code'), h('strong', {}, g.code)),
+    link, share,
+    h('div', { class: 'group-actions' },
+      g.mine ? h('button', { class: 'btn quiet', type: 'button', onclick: act('/api/groups/code', { groupId: g.id }, 'Make a new code? The old code and link stop working.') }, 'New code') : null,
+      h('button', { class: 'btn danger', type: 'button', onclick: act('/api/groups/leave', { groupId: g.id }, `Leave ${g.name}?`) }, 'Leave'),
+    ),
+  );
+}
+
+function careCard(g, reopen) {
+  const staff = g.members.filter((m) => m.role === 'staff').map((m) => m.name);
+  const shared = state.me.checkins?.share === true;
+  return h('article', { class: 'group-card care-card', 'aria-label': g.name },
+    h('div', { class: 'group-head' }, h('h3', {}, `🩺 ${g.name}`), h('span', { class: 'group-size' }, 'Care team')),
+    h('p', { class: 'dialog-note' }, `Clinicians: ${staff.join(', ') || '—'}. They never see your friends, places or plans, and other patients never see you.`),
+    h('p', { class: 'dialog-note' }, shared ? 'Your check-ins are shared with them. Stop any time from the menu (☰).' : 'Your check-ins are private. You decide in the menu (☰).'),
+    h('div', { class: 'group-actions' },
+      h('button', { class: 'btn danger', type: 'button', onclick: async () => {
+        if (!confirm(`Leave ${g.name}? They will no longer see your check-ins.`)) return;
+        const r = await api('/api/groups/leave', { groupId: g.id });
+        if (r.ok) reopen(r.data);
+      } }, 'Leave care team'),
+    ),
+  );
+}
+
+function strangerRow() {
+  const s = state.me?.stranger || {};
+  return h('div', { class: 'row stranger-row' },
+    h('b', {}, '🌱 Stranger mode: '),
+    s.on
+      ? 'on. Mochii may introduce you to another adult who also said yes: coffee, a walk, the gym or studying, at a public place in daytime. They never see where you are.'
+      : 'off. Turn it on to meet someone new nearby, one person at a time.',
+    h('button', { class: 'btn quiet', type: 'button', onclick: () => toggleStranger(!s.on) }, s.on ? 'Turn stranger mode off' : 'Meet new people'),
+  );
+}
+
+async function toggleStranger(on) {
+  if (on && !state.me?.stranger?.adult && !confirm('Stranger mode is for adults. Are you 18 or older?')) return;
+  const r = await api('/api/stranger', on ? { on: true, adult: true } : { on: false });
+  if (!r.ok) return toast(r.data?.error || 'Could not change stranger mode. Try again.');
+  closeDialog?.();
+  stageKey = '';
+  setState(r.data);
+  toast(on ? 'Stranger mode is on 🌱 Mochii will introduce you when there’s a good match.' : 'Stranger mode is off. Only your groups now.');
+}
+
+async function blockFromPlan(p) {
+  if (!confirm(`Block ${p.friend}? This plan is cancelled, you won't be matched again, and Mochii's team takes a look.`)) return;
+  const r = await api('/api/block', { userId: p.friendId, report: true });
+  if (r.ok) { setState(r.data); toast(`${p.friend} is blocked. Thank you for telling us.`); }
+  else toast(r.data?.error || 'Could not block. Try again.');
 }
 
 function openMenu() {
@@ -1036,7 +1199,7 @@ function openMenu() {
   else if (swReg && isApple && !standalone) pushText = 'To get nudges when Mochii is closed: tap Share → "Add to Home Screen", then open Mochii from your Home Screen.';
   else if (swReg && permission === 'granted') pushText = 'On while Mochii is open, even in the background.';
   else if (swReg) pushText = 'Off. Mochii only shows things while it\'s open.';
-  else pushText = 'Mochii shows things while it\'s open. Nudges when it\'s closed need a trusted https address (ask your host).';
+  else pushText = 'Mochii shows things while it\'s open. Nudges when it\'s closed need a trusted https address (ask the server operator).';
   const ci = state.me.checkins || {};
   const when = (t) => {
     const d = Math.round((Date.now() - t) / 864e5);
@@ -1046,7 +1209,9 @@ function openMenu() {
   if (ci.on !== true) checkinText = 'Off. A short check-in every two weeks helps Mochii notice what you need.';
   else {
     checkinText = `Every two weeks${ci.lastAt ? `, last one ${when(ci.lastAt)}` : ''}. `;
-    checkinText += ci.share ? 'Shared with your care team: only your answers and how often you met up.' : 'Private: only Mochii uses it.';
+    const teams = (state.groups || []).filter((g) => g.kind === 'care').map((g) => g.name);
+    checkinText += ci.share && teams.length ? `Shared with ${teams.join(' and ')}: only your answers and how often you met up.`
+      : teams.length ? 'Private: only Mochii uses it.' : 'Private: only Mochii uses it. To share with a clinic, join their care team with their code.';
   }
   const checkins = async (body) => {
     close();
@@ -1081,12 +1246,14 @@ function openMenu() {
         if (r.ok) setState(r.data);
       },
     }, state.map?.showArea ? 'Hide my rough area' : 'Show friends my rough area'),
+    h('button', { class: 'btn quiet', onclick: () => { close(); openGroups(); } }, `👥 Your groups (${(state.groups || []).filter((g) => g.kind === 'friends').length})`),
+    strangerRow(),
     h('div', { class: 'row' }, h('b', {}, '🔔 Nudges: '), pushText),
     canTurnOn ? h('button', { class: 'btn quiet', onclick: turnOn }, 'Turn nudges on') : null,
     h('div', { class: 'row' }, h('b', {}, '📋 Check-ins: '), checkinText),
     ci.on !== true ? h('button', { class: 'btn quiet', onclick: () => checkins({ on: true }) }, 'Start check-ins') : null,
     ci.on === true && !ci.inProgress ? h('button', { class: 'btn quiet', onclick: () => checkins({ start: true }) }, 'Do a check-in now') : null,
-    ci.on === true
+    ci.on === true && (state.groups || []).some((g) => g.kind === 'care')
       ? h('button', { class: 'btn quiet', onclick: () => checkins({ share: !ci.share }) }, ci.share ? 'Stop sharing with my care team' : 'Share with my care team')
       : null,
     ci.on === true ? h('button', { class: 'btn quiet', onclick: () => checkins({ on: false }) }, 'Stop check-ins') : null,
@@ -1108,7 +1275,7 @@ function openMenu() {
       h('b', {}, '🆘 Need to talk to someone now? '),
       'MIELI Crisis Helpline ', h('a', { href: 'tel:+358925250111' }, '09 2525 0111'), ' (24/7). In an emergency, call ', h('a', { href: 'tel:112' }, '112'), '.',
     ),
-    h('div', { class: 'row' }, 'Everything is stored on your host\'s computer. No feeds, no chat, no streaks.'),
+    h('div', { class: 'row' }, 'Only people in your groups can see your cat. No feeds, no chat, no streaks.'),
   );
   mountDialog(sheet, back);
 }
@@ -1134,13 +1301,23 @@ function renderAuth() {
   const signup = authMode === 'signup';
   const err = h('p', { class: 'error', role: 'alert' });
   const field = (label, attrs) => h('div', { class: 'field' }, h('label', { for: attrs.id }, label), h('input', attrs));
+  const banner = h('div', { class: 'invite-banner', hidden: true, role: 'status' });
+  if (pendingCode) void api(`/api/invite/${encodeURIComponent(pendingCode)}`).then((r) => {
+    if (!banner.isConnected) return;
+    banner.hidden = false;
+    banner.textContent = r.ok
+      ? `🐾 ${r.data.by ? `${r.data.by} invited you to` : 'You’re invited to'} “${r.data.name}”. ${signup ? 'Create an account' : 'Log in'} and you’re in.`
+      : 'That invite link didn’t work. You can still sign up and ask your friend for a new code.';
+    if (!r.ok) clearInvite();
+  });
   const form = h('form', { class: 'auth', novalidate: true },
     h('span', { class: 'eyebrow' }, signup ? 'YOUR PEOPLE ARE THE POINT' : 'MAKE YOURSELF AT HOME'),
     h('h2', {}, signup ? 'A little closer starts here.' : 'Welcome back, friend.'),
     h('p', { class: 'form-intro' }, signup ? 'Make a little space for the people you love.' : 'Your people, your plans, and a little cat. All right here.'),
+    banner,
     signup ? field('Your first name', { id: 'name', name: 'name', autocomplete: 'given-name', required: true, maxlength: 30 }) : null,
     field('Username', { id: 'username', name: 'username', autocomplete: 'username', autocapitalize: 'none', autocorrect: 'off', spellcheck: 'false', required: true }),
-    field('Password', { id: 'password', name: 'password', type: 'password', autocomplete: signup ? 'new-password' : 'current-password', required: true }),
+    field('Password', { id: 'password', name: 'password', type: 'password', autocomplete: signup ? 'new-password' : 'current-password', required: true, minlength: signup ? 8 : null, placeholder: signup ? 'At least 8 characters' : null }),
     err,
     h('button', { class: 'btn yes', type: 'submit' }, signup ? 'Find my people  →' : 'Come on in  →'),
     h('div', { class: 'switch' },
@@ -1157,19 +1334,24 @@ function renderAuth() {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     const data = Object.fromEntries(new FormData(form));
+    if (pendingCode) data.code = pendingCode;
     const r = await api(signup ? '/api/signup' : '/api/login', data);
     btn.disabled = false;
     if (!r.ok) {
       err.textContent = r.data?.error || 'Something went wrong. Try again?';
       return;
     }
+    const invited = pendingCode && !r.data.joinError ? (r.data.groups || []).at(-1) : null;
+    clearInvite();
     signedIn(r.data);
+    if (r.data.joinError) toast(r.data.joinError);
+    else if (invited) toast(`You're in “${invited.name}” 🐾 Mochii will suggest little plans together.`);
   });
   const story = h('section', { class: 'auth-story' },
     h('span', { class: 'story-pill' }, 'LESS SCROLLING. MORE LIVING.'),
     h('h1', {}, 'Social media that is ', h('em', {}, 'actually social.')),
     h('p', { class: 'story-copy' }, 'A coffee. A walk. A familiar face. Mochii turns the little “we should” moments into time together.'),
-    h('img', { class: 'together-art', src: '/icons/together.svg', alt: 'Two cozy cats sharing a coffee in the park', width: '600', height: '360' }),
+    h('img', { class: 'together-art', src: '/icons/together.png', alt: 'Two cozy cats sharing a coffee in the park', width: '600', height: '360' }),
     h('div', { class: 'story-tags' }, h('span', {}, '🐾 Your kind of company'), h('span', {}, '☕ Real little plans'), h('span', {}, '♡ At your own pace')),
   );
   $app.replaceChildren(

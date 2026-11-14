@@ -194,24 +194,24 @@ test('your weather updates your map avatar and MOOD button without moving the ca
   const h = harness();
   h.run('state.map.me = { lat: 60.19, lon: 24.83 }; state.me.mood = "sunny"; ensureMap(); updateMap(); renderMoodButton();');
   const original = h.run('markers.get("me").marker');
-  assert.equal(original.element.children[0].attrs.src, '/icons/moods/sunny.svg');
+  assert.equal(original.element.children[0].attrs.src, '/icons/moods/sunny.png');
   const cameraCalls = h.instances[0].cameraCalls;
   h.run('state.me.mood = "rainy"; updateMap(); renderMoodButton();');
-  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/moods/rainy.svg');
+  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/moods/rainy.png');
   assert.ok(h.shell.mood.attrs['aria-label'].includes('Rainy, sad'));
   assert.equal(original.removed, true);
   assert.equal(h.instances[0].cameraCalls, cameraCalls);
   h.run('state.me.mood = null; updateMap();');
-  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/cat.svg');
+  assert.equal(h.run('markers.get("me").marker.element.children[0].attrs.src'), '/icons/cat.png');
 });
 
 test('a friend changing weather replaces their cat on an already open map', () => {
   const h = harness();
   h.run('state.map.friends = [{ id: "Bob", name: "Bob", kind: "area", lat: 60.195, lon: 24.83, mood: "foggy" }]; ensureMap(); updateMap();');
   const original = h.run('markers.get("f:Bob:area").marker');
-  assert.equal(original.element.children[0].children[0].attrs.src, '/icons/moods/foggy.svg');
+  assert.equal(original.element.children[0].children[0].attrs.src, '/icons/moods/foggy.png');
   h.run('state.map.friends[0].mood = "rainbow"; updateMap();');
-  assert.equal(h.run('markers.get("f:Bob:area").marker.element.children[0].children[0].attrs.src'), '/icons/moods/rainbow.svg');
+  assert.equal(h.run('markers.get("f:Bob:area").marker.element.children[0].children[0].attrs.src'), '/icons/moods/rainbow.png');
   assert.equal(original.removed, true);
   h.run('state.map.friends = []; updateMap();');
   assert.equal(h.run('markers.size'), 0);
@@ -231,5 +231,5 @@ test('cats in the same shared area remain distinct without changing their coordi
 
 test('unexpected weather values cannot be turned into image paths', () => {
   const h = harness();
-  assert.equal(h.run('weatherCat("../../private").attrs.src'), '/icons/cat.svg');
+  assert.equal(h.run('weatherCat("../../private").attrs.src'), '/icons/cat.png');
 });

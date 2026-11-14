@@ -29,7 +29,7 @@ That's 16 taps in total. The wording, answer options and scoring are the publish
 
 ### Why the PHQ-8 and not the PHQ-9
 
-Item 9 of the PHQ-9 asks about thoughts of being better off dead or of self-harm. The PHQ-8 drops it. It's meant for settings where nobody can respond to a worrying answer in time (Kroenke et al., 2009). That is Mochii's situation: answers sit on a laptop, and nobody is on call.
+Item 9 of the PHQ-9 asks about thoughts of being better off dead or of self-harm. The PHQ-8 drops it. It's meant for settings where nobody can respond to a worrying answer in time (Kroenke et al., 2009). That is Mochii's situation: answers sit on a server, and nobody is on call.
 
 A meta-analysis of individual participant data found the PHQ-8's accuracy for major depression very close to the PHQ-9's (Wu et al., 2020). Leaving item 9 out does not make Mochii a safety tool. Instead:
 - Every person's menu (☰) always shows the MIELI Crisis Helpline (09 2525 0111, 24/7) and 112.
@@ -40,13 +40,14 @@ A meta-analysis of individual participant data found the PHQ-8's accuracy for ma
 - **Consent first.** After onboarding, Mochii asks once: "Would a short check-in every two weeks be okay?" "Not now" is respected. Check-ins can be started, stopped or run early from the menu.
 - **One question per card,** WHO-5 first, so it doesn't open with symptoms. Plan questions (suggestions, reminders) always come first, and a half-done check-in never blocks plans.
 - **Every 14 days.** If a check-in isn't finished within 3 days, Mochii drops it and tries again 2 days later. The questions ask about the last two weeks, so old half-answers aren't kept. In demo rhythm, check-ins come every 30 minutes instead.
-- **Sharing is a second, separate yes,** asked after the first check-in: "Share your check-ins with your care team?" It shares only the check-in answers and how often the person met up with people, never places, names of friends or plans. It can be switched off any time in the menu.
+- **A care team is something you join, with its code.** A clinician account (set up by the server operator) starts a care team and gives patients its code. Joining shares nothing by itself, patients never see each other, and Mochii never pairs them with each other.
+- **Sharing is a second, separate yes,** asked only once you're in a care team and have done a check-in: "Share your check-ins with Otaniemi TMS clinic?" It shares only the check-in answers and how often the person met up with people, never places, names of friends or plans. It can be switched off any time in the menu. Without a care team there is nothing to share with, and the question is never asked.
 
 ## How Mochii uses the answers
 
 1. **Gentler suggestions.** A check-in from the last four weeks with PHQ-8 ≥ 10, WHO-5 ≤ 50 or loneliness ≥ 6 puts Mochii into its "quieter stretch" mode. Suggestions become smaller, closer and lower in effort, and come a little more often. This happens whether or not the person shares.
 2. **A support card after a heavy check-in.** PHQ-8 ≥ 15 (moderately severe) brings up: "The last two weeks sound heavy. Would it help to talk to your care team or someone you trust?" The card has tappable links to MIELI and 112.
-3. **The care-team view** (`/clinician`, host computer only) shows people who chose to share. Each person gets a status from the fixed rules below, the reasons, a plain summary, their check-in history and their meet-ups.
+3. **The care-team view** (`/clinician`, clinician accounts only) shows only the patients of that clinician's own care teams who chose to share. Each person gets a status from the fixed rules below, the reasons, a plain summary, their check-in history and their meet-ups.
 
 ### Care-team rules
 
@@ -68,7 +69,7 @@ The last three rules are product heuristics, not published thresholds.
 
 ## AI summaries (optional)
 
-If the host computer has `ANTHROPIC_API_KEY` set, the care-team view gets a **Write AI summary** button for each person. Claude (`claude-opus-5-5`) turns the numbers into a short summary for a busy clinician: a headline, two to four sentences, and up to three things worth asking about.
+If the server has `ANTHROPIC_API_KEY` set, the care-team view gets a **Write AI summary** button for each person. Claude (`claude-opus-5-5`) turns the numbers into a short summary for a busy clinician: a headline, two to four sentences, and up to three things worth asking about.
 
 **Claude gets:**
 - Totals for each check-in, labelled "days ago".
@@ -77,7 +78,7 @@ If the host computer has `ANTHROPIC_API_KEY` set, the care-team view gets a **Wr
 - Whether sample data is included.
 
 **Claude never gets:**
-- The person's name. They're "Person A", and the name is put back on the host computer.
+- The person's name. They're "Person A", and the name is put back on the Mochii server.
 - Their username, places, friends, plan details or dates.
 - Item-level answers.
 
@@ -85,19 +86,19 @@ If the host computer has `ANTHROPIC_API_KEY` set, the care-team view gets a **Wr
 - Rules decide the status. Claude is told to explain it, not change it, and not to diagnose.
 - The answer comes back in a fixed JSON format. If Claude declines, the API retries on Anthropic's recommended fallback model.
 - Summaries are kept in memory only and refreshed when the data changes.
-- Without a key, the rule-based summary still works and nothing leaves the laptop.
+- Without a key, the rule-based summary still works and nothing leaves the Mochii server.
 
-## Demo tools (host dashboard)
+## Demo tools (operator dashboard)
 
 - **Check-in now** starts a check-in for that person. If they haven't said yes to check-ins yet, it asks them first.
-- **+ sample: steady / slipping** adds four made-up check-ins two weeks apart, so the care-team view has a history to show. Sample entries are labelled everywhere they appear. The person still has to say yes to sharing on their phone before they show up in the care-team view.
+- **+ sample: steady / slipping** adds four made-up check-ins two weeks apart, so the care-team view has a history to show. Sample entries are labelled everywhere they appear. The person still has to join a care team with its code and say yes to sharing on their phone before they show up in that team's care-team view.
 
 ## Limits
 
 - The cut-offs come from population studies. For one person, the trend against their own first check-in matters more than any single number.
 - None of these questionnaires was validated as a relapse predictor in a TMS population. That needs a proper study, together with the clinicians.
 - Validated translations exist (the PHQ has translations in many languages), but Mochii currently asks in English only.
-- Check-in answers are health data, a special category of personal data under the GDPR. A real deployment needs a legal basis, a data processing agreement for any AI provider, and secure hosting. This prototype runs on one laptop.
+- Check-in answers are health data, a special category of personal data under the GDPR. A real deployment needs a legal basis, a data processing agreement with each clinic and any AI provider, and secure hosting. This prototype keeps everything in one server process with a JSON file.
 
 ## References
 

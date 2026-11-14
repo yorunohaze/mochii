@@ -1,6 +1,11 @@
-// Mochii server: run it on your laptop; phones on the same Wi-Fi open the printed https:// address.
+// Mochii server: one shared server for everyone. People sign up, start friend groups and invite each other with codes.
 //   node server/index.js          real rhythm (a couple of suggestions a day, 9:00–20:00)
 //   node server/index.js --demo   fast rhythm for testing and pitching
+//
+// On a public server, put it behind a reverse proxy that terminates HTTPS (Caddy, nginx, a PaaS) and set:
+//   PUBLIC_URL=https://mochii.example   TRUST_PROXY=1   HTTPS_PORT=0   EDEN_ADMIN_TOKEN=<long random secret>
+// Without a proxy (local Wi-Fi testing) it also serves a self-signed HTTPS port so phones can use GPS.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
@@ -9,6 +14,7 @@ import path from 'node:path';
 
 import QRCode from 'qrcode';
 
+import * as circles from './circles.js';
 import * as clinician from './clinician.js';
 import * as engine from './engine.js';
 import { vapidPublicKey } from './push.js';
@@ -17,7 +23,11 @@ import { db, log, resetDb, save } from './store.js';
 
 engine.config.demo = process.argv.includes('--demo') || process.env.EDEN_DEMO === '1';
 const PORT = Number(process.env.PORT || 3000);
-const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443);
+const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 3443); // 0 = off (behind a proxy that does HTTPS)
+const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+const ADMIN_TOKEN = process.env.EDEN_ADMIN_TOKEN || '';
+const SESSION_DAYS = 60;
 const PUBLIC = path.resolve(import.meta.dirname, '..', 'public');
 // The map library is served straight from node_modules (pinned in package.json), so phones never need a CDN.
 const MAPLIBRE = path.resolve(import.meta.dirname, '..', 'node_modules', 'maplibre-gl', 'dist');
@@ -44,8 +54,14 @@ const TYPES = {
   '.ttf': 'font/ttf',
 };
 
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'same-origin',
+  'x-frame-options': 'DENY',
+};
+
 function send(res, status, body, type = 'text/plain; charset=utf-8', extra = {}) {
-  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...extra });
+  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...SECURITY_HEADERS, ...extra });
   res.end(body);
 }
 const json = (res, status, data, extra) => send(res, status, JSON.stringify(data), 'application/json', extra);
@@ -82,18 +98,87 @@ function cookies(req) {
   );
 }
 
-function sessionCookie(req, token, maxAge = 365 * 864e2) {
-  const secure = req.socket.encrypted ? '; Secure' : '';
-  return `eden=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+/** HTTPS as the browser sees it: directly, or through a trusted reverse proxy. */
+const isSecure = (req) => req.socket.encrypted || (TRUST_PROXY && String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https');
+
+function sessionCookie(req, token, maxAge = SESSION_DAYS * 864e2) {
+  return `eden=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${isSecure(req) ? '; Secure' : ''}`;
+}
+
+/** The real client address. Forwarding headers are only believed when TRUST_PROXY=1 (they're trivial to fake otherwise). */
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+    if (fwd) return fwd;
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+
+const FORWARDED = ['x-forwarded-for', 'forwarded', 'x-real-ip', 'cf-connecting-ip', 'true-client-ip', 'x-forwarded-host'];
+
+/**
+ * A request typed on this very computer: loopback AND not relayed by a tunnel or proxy. Tunnels (cloudflared, ngrok)
+ * connect from 127.0.0.1 too, so loopback alone would let the whole internet in.
+ */
+const isTrulyLocal = (req) =>
+  ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !FORWARDED.some((h) => req.headers[h]);
+
+function startSession(req, userId) {
+  const token = newToken();
+  db.sessions[token] = { userId, at: Date.now(), seen: Date.now() };
+  save();
+  return sessionCookie(req, token);
 }
 
 function currentUser(req) {
   const token = cookies(req).eden;
   const s = token && db.sessions[token];
-  return s ? db.users[s.userId] : null;
+  if (!s) return null;
+  const now = Date.now();
+  if (now - (s.seen ?? s.at) > SESSION_DAYS * 864e5) {
+    delete db.sessions[token];
+    save();
+    return null;
+  }
+  if (now - (s.seen ?? 0) > 3600e3) {
+    s.seen = now; // sliding expiry, written at most hourly
+    save();
+  }
+  return db.users[s.userId] ?? null;
 }
 
-const isLocal = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+/* ------------------------------------------------------------- rate limits */
+
+const buckets = new Map(); // key -> { n, reset }
+function limited(key, max, windowMs) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.reset) {
+    buckets.set(key, { n: 1, reset: now + windowMs });
+    return false;
+  }
+  b.n += 1;
+  return b.n > max;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, b] of buckets) if (now > b.reset) buckets.delete(k);
+}, 10 * 60e3).unref();
+const tooMany = (res) => json(res, 429, { error: 'Too many tries. Take a breath and try again in a little while.' });
+
+/* ---------------------------------------------------------- operator access */
+
+function tokenMatches(given) {
+  if (!ADMIN_TOKEN || !given) return false;
+  const a = crypto.createHash('sha256').update(String(given)).digest();
+  const b = crypto.createHash('sha256').update(ADMIN_TOKEN).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+function adminOk(req) {
+  if (!ADMIN_TOKEN) return isTrulyLocal(req); // no token set: only from the server's own keyboard
+  return tokenMatches(req.headers['x-admin-token'] || cookies(req).eden_admin);
+}
 
 /* ------------------------------------------------------------ live stream */
 
@@ -118,7 +203,10 @@ function openStream(req, res, user) {
   if (!streams.has(user.id)) streams.set(user.id, new Set());
   streams.get(user.id).add(res);
   // Recompute time-sensitive visibility even when nobody taps or moves: stale positions disappear.
-  const ping = setInterval(() => res.write(`event: state\ndata: ${JSON.stringify(engine.stateFor(user.id))}\n\n`), 25e3);
+  const ping = setInterval(() => {
+    const state = engine.stateFor(user.id);
+    if (state) res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+  }, 25e3);
   req.on('close', () => {
     clearInterval(ping);
     streams.get(user.id)?.delete(res);
@@ -129,57 +217,97 @@ function openStream(req, res, user) {
 
 const USERNAME = /^[a-z0-9_.-]{3,24}$/;
 
+/** After signing up or logging in with an invite code: join that group straight away. */
+function joinAfterAuth(user, code) {
+  if (!code) return null;
+  const r = circles.joinByCode(user.id, code);
+  if (r.group) afterJoin(user.id, r.group);
+  return r.error ?? null;
+}
+
+function afterJoin(userId, group) {
+  save();
+  if (group.kind === 'care') engine.joinedCareTeam(userId);
+  engine.groupChanged(Object.keys(group.members));
+}
+
 async function api(req, res, url) {
   const route = `${req.method} ${url.pathname}`;
+  const ip = clientIp(req);
 
   if (route === 'POST /api/signup') {
-    const { name = '', username = '', password = '' } = await readJson(req);
+    if (limited(`signup:${ip}`, 20, 3600e3)) return tooMany(res);
+    const { name = '', username = '', password = '', code = '' } = await readJson(req);
     const n = String(name).trim().slice(0, 30);
     const un = String(username).trim().toLowerCase();
     if (!n) return json(res, 400, { error: 'What should Mochii call you?' });
     if (!USERNAME.test(un)) return json(res, 400, { error: 'Username: 3–24 letters or numbers.' });
-    if (String(password).length < 6) return json(res, 400, { error: 'Password: at least 6 characters.' });
+    if (String(password).length < 8) return json(res, 400, { error: 'Password: at least 8 characters.' });
     if (Object.values(db.users).some((u) => u.username === un)) return json(res, 409, { error: 'That username is taken.' });
     const user = engine.createUser({ name: n, username: un, pass: hashPassword(String(password)) });
-    const token = newToken();
-    db.sessions[token] = { userId: user.id, at: Date.now() };
-    save();
-    return json(res, 200, engine.stateFor(user.id), { 'set-cookie': sessionCookie(req, token) });
+    const cookie = startSession(req, user.id);
+    const joinError = joinAfterAuth(user, code);
+    return json(res, 200, { ...engine.stateFor(user.id), joinError }, { 'set-cookie': cookie });
   }
 
   if (route === 'POST /api/login') {
-    const { username = '', password = '' } = await readJson(req);
-    const user = Object.values(db.users).find((u) => u.username === String(username).trim().toLowerCase());
+    const { username = '', password = '', code = '' } = await readJson(req);
+    const un = String(username).trim().toLowerCase();
+    if (limited(`login:${ip}`, 30, 15 * 60e3) || limited(`login-user:${un}`, 10, 15 * 60e3)) return tooMany(res);
+    const user = Object.values(db.users).find((u) => u.username === un);
     if (!user || !checkPassword(String(password), user.pass)) return json(res, 401, { error: "That didn't match. Try again?" });
-    const token = newToken();
-    db.sessions[token] = { userId: user.id, at: Date.now() };
-    save();
-    return json(res, 200, engine.stateFor(user.id), { 'set-cookie': sessionCookie(req, token) });
+    const cookie = startSession(req, user.id);
+    const joinError = joinAfterAuth(user, code);
+    return json(res, 200, { ...engine.stateFor(user.id), joinError }, { 'set-cookie': cookie });
   }
 
   if (route === 'GET /api/info') {
-    return json(res, 200, { people: Object.keys(db.users).length, demo: engine.config.demo, vapidPublicKey });
+    // inviteBase: the address friends should open (the public URL, or this machine's Wi-Fi address when testing locally).
+    return json(res, 200, { demo: engine.config.demo, vapidPublicKey, publicUrl: PUBLIC_URL || null, inviteBase: phoneUrls()[0] || null });
   }
 
-  /* ---- host dashboard and care-team view (only from the host computer) ---- */
-  if (url.pathname.startsWith('/api/admin/')) {
-    if (!isLocal(req)) return json(res, 403, { error: 'Host only' });
-    return adminApi(req, res, url);
+  // "You're invited to …" before signing up. Rate-limited so codes can't be guessed.
+  const invite = url.pathname.match(/^\/api\/invite\/([A-Za-z0-9-]{4,20})$/);
+  if (req.method === 'GET' && invite) {
+    if (limited(`invite:${ip}`, 30, 3600e3)) return tooMany(res);
+    const preview = circles.invitePreview(invite[1]);
+    return preview ? json(res, 200, preview) : json(res, 404, { error: "That code didn't match a group." });
   }
-  if (url.pathname.startsWith('/api/clinician/')) {
-    if (!isLocal(req)) return json(res, 403, { error: 'Host only' });
-    if (route === 'GET /api/clinician/state') return json(res, 200, clinician.overview());
-    if (route === 'POST /api/clinician/summary') {
-      const { userId } = await readJson(req);
-      const r = await clinician.aiSummary(String(userId));
-      return json(res, r.error ? 400 : 200, r);
+
+  /* ---- operator dashboard: EDEN_ADMIN_TOKEN, or this computer's own keyboard ---- */
+  if (url.pathname.startsWith('/api/admin/')) {
+    if (url.pathname === '/api/admin/login' && req.method === 'POST') {
+      if (limited(`admin:${ip}`, 10, 15 * 60e3)) return tooMany(res);
+      const { token = '' } = await readJson(req);
+      if (!tokenMatches(token)) return json(res, 401, { error: ADMIN_TOKEN ? 'Wrong operator token.' : 'No operator token is set on this server.' });
+      return json(res, 200, { ok: true }, { 'set-cookie': `eden_admin=${encodeURIComponent(String(token))}; Path=/; HttpOnly; SameSite=Strict; Max-Age=43200${isSecure(req) ? '; Secure' : ''}` });
     }
-    return json(res, 404, { error: 'Not found' });
+    if (!adminOk(req)) return json(res, 403, { error: ADMIN_TOKEN ? 'Operator token needed.' : 'Operator only. Set EDEN_ADMIN_TOKEN to manage this server remotely.', needsToken: !!ADMIN_TOKEN });
+    return adminApi(req, res, url);
   }
 
   /* ---- everything below needs an account ---- */
   const user = currentUser(req);
   if (!user) return json(res, 401, { error: 'Not signed in' });
+
+  /* ---- care-team view: clinician accounts, only their own patients ---- */
+  if (url.pathname.startsWith('/api/clinician/')) {
+    if (!user.clinician) return json(res, 403, { error: 'This is for clinician accounts. Ask the server operator to set one up.' });
+    if (route === 'GET /api/clinician/state') return json(res, 200, clinician.overview(user.id));
+    if (route === 'POST /api/clinician/team') {
+      const { name } = await readJson(req);
+      const r = circles.createGroup(user.id, name, 'care');
+      if (r.error) return json(res, 400, r);
+      save();
+      return json(res, 200, clinician.overview(user.id));
+    }
+    if (route === 'POST /api/clinician/summary') {
+      const { userId } = await readJson(req);
+      const r = await clinician.aiSummary(String(userId), user.id);
+      return json(res, r.error ? 400 : 200, r);
+    }
+    return json(res, 404, { error: 'Not found' });
+  }
 
   switch (route) {
     case 'GET /api/state':
@@ -192,6 +320,7 @@ async function api(req, res, url) {
       return json(res, done ? 200 : 409, { ...engine.stateFor(user.id), reply: done?.reply ?? null });
     }
     case 'POST /api/location': {
+      if (limited(`loc:${user.id}`, 120, 60e3)) return tooMany(res);
       const { lat, lon, acc } = await readJson(req);
       engine.updateLocation(user.id, { lat: Number(lat), lon: Number(lon), acc: Number(acc) });
       return json(res, 200, { ok: true });
@@ -231,6 +360,69 @@ async function api(req, res, url) {
       engine.setPause(user.id, Math.max(0, Math.min(30, Number(days) || 0)));
       return json(res, 200, engine.stateFor(user.id));
     }
+
+    /* ---- friend groups ---- */
+    case 'POST /api/groups': {
+      if (limited(`group-new:${user.id}`, 10, 3600e3)) return tooMany(res);
+      const { name } = await readJson(req);
+      const r = circles.createGroup(user.id, name, 'friends');
+      if (r.error) return json(res, 400, r);
+      afterJoin(user.id, r.group);
+      return json(res, 200, { ...engine.stateFor(user.id), groupId: r.group.id });
+    }
+    case 'POST /api/groups/join': {
+      if (limited(`join:${user.id}`, 20, 3600e3) || limited(`join-ip:${ip}`, 60, 3600e3)) return tooMany(res);
+      const { code } = await readJson(req);
+      const r = circles.joinByCode(user.id, code);
+      if (r.error) return json(res, 400, r);
+      afterJoin(user.id, r.group);
+      return json(res, 200, { ...engine.stateFor(user.id), groupId: r.group.id, already: !!r.already, kind: r.group.kind });
+    }
+    case 'POST /api/groups/leave': {
+      const { groupId } = await readJson(req);
+      const g = db.groups?.[groupId];
+      const members = g ? Object.keys(g.members) : [];
+      const r = circles.leaveGroup(user.id, String(groupId));
+      if (r.error) return json(res, 400, r);
+      save();
+      engine.groupChanged([user.id, ...members]);
+      return json(res, 200, engine.stateFor(user.id));
+    }
+    case 'POST /api/groups/remove': {
+      const { groupId, userId } = await readJson(req);
+      const g = db.groups?.[groupId];
+      const members = g ? Object.keys(g.members) : [];
+      const r = circles.removeMember(user.id, String(groupId), String(userId));
+      if (r.error) return json(res, 400, r);
+      save();
+      engine.groupChanged(members);
+      return json(res, 200, engine.stateFor(user.id));
+    }
+    case 'POST /api/groups/code': {
+      const { groupId } = await readJson(req);
+      const r = circles.newGroupCode(user.id, String(groupId));
+      if (r.error) return json(res, 400, r);
+      save();
+      return json(res, 200, engine.stateFor(user.id));
+    }
+
+    /* ---- stranger mode and safety ---- */
+    case 'POST /api/stranger': {
+      const { on, adult } = await readJson(req);
+      const r = engine.setStranger(user.id, { on: on === true, adult: adult === true });
+      if (r.error) return json(res, 400, r);
+      return json(res, 200, engine.stateFor(user.id));
+    }
+    case 'POST /api/block': {
+      const { userId, report } = await readJson(req);
+      const other = String(userId);
+      // You can only block someone Mochii actually put in front of you.
+      const met = Object.values(db.plans).some((p) => p.userIds.includes(user.id) && p.userIds.includes(other));
+      if (!met && !circles.connected(user.id, other)) return json(res, 400, { error: "You can only block someone you've been matched with." });
+      engine.blockUser(user.id, other, !!report);
+      return json(res, 200, engine.stateFor(user.id));
+    }
+
     case 'POST /api/logout': {
       delete db.sessions[cookies(req).eden];
       save();
@@ -247,7 +439,8 @@ async function api(req, res, url) {
 
 async function adminApi(req, res, url) {
   const action = url.pathname.slice('/api/admin/'.length);
-  if (req.method === 'GET' && action === 'state') return json(res, 200, { ...engine.adminState(), urls: phoneUrls() });
+  const state = () => ({ ...engine.adminState(), urls: phoneUrls(), publicUrl: PUBLIC_URL || null, protectedByToken: !!ADMIN_TOKEN });
+  if (req.method === 'GET' && action === 'state') return json(res, 200, state());
   if (req.method === 'GET' && action === 'qr') {
     const svg = await QRCode.toString(url.searchParams.get('u') || phoneUrls()[0] || '', { type: 'svg', margin: 1 });
     return send(res, 200, svg, 'image/svg+xml');
@@ -285,18 +478,30 @@ async function adminApi(req, res, url) {
     case 'remove':
       engine.admin.remove(body.userId);
       break;
+    case 'clinician':
+      engine.admin.clinician(body.userId, body.on);
+      break;
+    case 'stranger':
+      engine.admin.stranger(body.userId, body.on);
+      break;
+    case 'resolve':
+      engine.admin.resolveReport(body.reportId);
+      break;
     case 'demo':
       engine.setDemo(body.on);
       log(`Demo rhythm ${body.on ? 'on' : 'off'}`);
       break;
     case 'reset':
+      if (!engine.config.demo) return json(res, 400, { error: 'Reset is only available in demo rhythm, so a live server is never wiped by one click.' });
       resetDb();
       log('Everything was reset');
       break;
+    case 'logout':
+      return json(res, 200, { ok: true }, { 'set-cookie': `eden_admin=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0` });
     default:
       return json(res, 404, { error: 'Unknown action' });
   }
-  return json(res, 200, { ...engine.adminState(), urls: phoneUrls() });
+  return json(res, 200, state());
 }
 
 /* ------------------------------------------------------------------ static */
@@ -309,17 +514,20 @@ function serveStatic(req, res, pathname) {
       send(res, 200, data, TYPES[path.extname(vendor[1])], { 'cache-control': 'public, max-age=86400' });
     });
   }
-  if (pathname === '/admin' || pathname === '/clinician') {
-    if (!isLocal(req)) return send(res, 403, 'This page only opens on the host computer.');
-    pathname = `${pathname}.html`;
-  }
-  if ((pathname === '/admin.html' || pathname === '/clinician.html') && !isLocal(req)) return send(res, 403, 'This page only opens on the host computer.');
+  // The dashboards' pages hold no data: their APIs check the operator token / clinician account.
+  if (pathname === '/admin' || pathname === '/clinician') pathname = `${pathname}.html`;
   if (pathname === '/') pathname = '/index.html';
-  const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return send(res, 400, 'Bad request');
+  }
+  const file = path.normalize(path.join(PUBLIC, decoded));
   if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
   fs.readFile(file, (err, data) => {
     if (err) {
-      // Single-page app: unknown paths get the app.
+      // Single-page app: unknown paths (like /join/K7Q2-M9XT) get the app.
       if (!path.extname(file)) return serveStatic(req, res, '/index.html');
       return send(res, 404, 'Not found');
     }
@@ -342,22 +550,27 @@ async function handle(req, res) {
 /* ------------------------------------------------------------------- start */
 
 function phoneUrls() {
-  return lanIps().map((ip) => `https://${ip}:${HTTPS_PORT}`);
+  if (PUBLIC_URL) return [PUBLIC_URL];
+  return HTTPS_PORT ? lanIps().map((ip) => `https://${ip}:${HTTPS_PORT}`) : lanIps().map((ip) => `http://${ip}:${PORT}`);
 }
 
-const cert = await loadOrCreateCert(lanIps());
 http.createServer(handle).listen(PORT, '0.0.0.0');
-https.createServer({ key: cert.key, cert: cert.cert }, handle).listen(HTTPS_PORT, '0.0.0.0');
+if (HTTPS_PORT) {
+  const cert = await loadOrCreateCert(lanIps());
+  https.createServer({ key: cert.key, cert: cert.cert }, handle).listen(HTTPS_PORT, '0.0.0.0');
+}
 engine.start();
 
 const urls = phoneUrls();
 console.log(`\n  🐾 Mochii is running${engine.config.demo ? ' (demo rhythm: fast suggestions)' : ''}\n`);
 if (urls[0]) {
   console.log(await QRCode.toString(urls[0], { type: 'terminal', small: true }));
-  console.log('  Phones on the same Wi-Fi, open:');
+  console.log(PUBLIC_URL ? '  Open:' : '  Phones on the same Wi-Fi, open:');
   for (const u of urls) console.log(`    ${u}`);
-  console.log('  (First time: tap "Show Details" → "visit this website". It\'s your own laptop.)\n');
+  if (!PUBLIC_URL && HTTPS_PORT) console.log('  (First time: tap "Show Details" → "visit this website". It\'s a self-signed test certificate.)\n');
 }
-console.log(`  Host dashboard (this computer only): http://localhost:${PORT}/admin`);
-console.log(`  Care-team view (this computer only): http://localhost:${PORT}/clinician${clinician.aiReady() ? '' : '  (AI summaries: set ANTHROPIC_API_KEY)'}`);
-console.log(`  On this computer:                    http://localhost:${PORT}\n`);
+console.log(`  Operator dashboard: ${PUBLIC_URL || `http://localhost:${PORT}`}/admin${ADMIN_TOKEN ? '  (operator token required)' : '  (this computer only: set EDEN_ADMIN_TOKEN to use it remotely)'}`);
+console.log(`  Care-team view:     ${PUBLIC_URL || `http://localhost:${PORT}`}/clinician  (clinician accounts)${clinician.aiReady() ? '' : '  (AI summaries: set ANTHROPIC_API_KEY)'}`);
+if (PUBLIC_URL && !TRUST_PROXY) console.log('  ⚠ PUBLIC_URL is set but TRUST_PROXY is not: secure cookies and rate limits won’t see the real client.');
+if (!ADMIN_TOKEN && (PUBLIC_URL || TRUST_PROXY)) console.log('  ⚠ No EDEN_ADMIN_TOKEN: the operator dashboard is unreachable remotely (that is the safe default).');
+console.log('');

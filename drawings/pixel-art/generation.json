@@ -1,0 +1,243 @@
+{
+  "created": "2026-11-14",
+  "generator": "Built-in image_gen tool",
+  "style": "Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet.",
+  "prompts": [
+    {
+      "file": "cat.png",
+      "prompt": "Use case: stylized-concept. Create ONE production-ready transparent PNG pixel-art sprite for Mochii, a cozy cat social app. Asset: neutral cat for small map markers and welcome panel. Canvas shape nearly square slightly tall, approximately 640 x 680 (160:170 aspect). Single full-body seated cream kitten, large round head, two pointy ears with peach-pink interiors, two simple dark cocoa dot eyes with tiny square highlights, tiny pink triangular nose, tiny friendly w mouth, pink cheeks, small chubby seated body, two little feet, curved tail to the left, mint triangular bandana, cream belly. Front view, cat fills about 80% canvas with transparent padding and all ears/tail/paws fully visible. Strong silhouette and simple face readable at 65px wide. AUTHENTIC HAND-PLACED PIXEL ART: visible consistent square pixel grid, chunky stair-step edges, limited 12-18 color palette, dark cocoa 2 pixel outlines at logical 64px sprite scale; scale pixels up cleanly, hard edges, no smooth vector curves, no anti-aliasing, no blur, no gradients, no realistic fur. Palette cocoa #5B4636, cream #F8E2C2, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, pink #F0A0AC. Genuine transparent background (alpha), no scene, no badge, no weather, no text, no watermark, no drop shadow. One drawing only, not a sprite sheet."
+    },
+    {
+      "file": "moods/sunny.png",
+      "prompt": "Use case: precise-object-edit. Reference image 1 is the Mochii cat to preserve. Create its sunny weather variant as ONE standalone transparent PNG asset. Keep the exact same cream cat, face, mint bandana, sitting pose and tail. Add a small warm golden pixel sun above its head, slightly to the right, with short bold rays. Happy weather, gentle smile. Extend the composition vertically to a portrait 160:220 aspect ratio, with a generous weather zone above the ears. Cat occupies the lower 70 percent and weather occupies the upper 20 percent, with transparent margin on all sides. Keep cat scale and ground baseline consistent across weather variants. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/rainy.png",
+      "prompt": "Use case: precise-object-edit. Reference image 1 is the Mochii cat to preserve. Create its rainy weather variant as ONE standalone transparent PNG asset. Keep the exact same cream cat identity, face, seated proportions and curved tail. Dress its body in a simple bright yellow raincoat shaped around the seated torso, yellow collar and two simple buttons. Ears and full face exposed. Add a small blue-grey pixel rain cloud centered above the head and 3 bold blue raindrops between cloud and ears. Sad weather; tiny soft downturned mouth, not distressed. The raincoat must be obvious at small sizes. Extend the composition vertically to a portrait 160:220 aspect ratio, with a generous weather zone above the ears. Cat occupies the lower 70 percent and weather occupies the upper 20 percent, with transparent margin on all sides. Keep cat scale and ground baseline consistent across weather variants. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/foggy.png",
+      "prompt": "Use case: precise-object-edit. Reference image 1 is the Mochii cat to preserve. Create its foggy weather variant as ONE standalone transparent PNG asset. Keep the exact same cream cat identity, face, mint bandana, seated pose and curved tail. Add three horizontal pale blue-grey blocky pixel fog bands above its head with transparent gaps, and one small fog wisp beside a shoulder. Uncertain weather, a small neutral mouth. Do not obscure the eyes or entire cat. Extend the composition vertically to a portrait 160:220 aspect ratio, with a generous weather zone above the ears. Cat occupies the lower 70 percent and weather occupies the upper 20 percent, with transparent margin on all sides. Keep cat scale and ground baseline consistent across weather variants. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/cloudy.png",
+      "prompt": "Use case: precise-object-edit. Reference image 1 is the Mochii cat to preserve. Create its cloudy weather variant as ONE standalone transparent PNG asset. Keep the exact same cream cat identity, face, mint bandana, seated pose and curved tail. Add one rounded stair-step pale lavender grey pixel cloud above its head, no rain, no lightning, no sun. Low-energy weather, soft calm slightly sleepy eyes, still clear and friendly. Extend the composition vertically to a portrait 160:220 aspect ratio, with a generous weather zone above the ears. Cat occupies the lower 70 percent and weather occupies the upper 20 percent, with transparent margin on all sides. Keep cat scale and ground baseline consistent across weather variants. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/stormy.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact Mochii cat to preserve: cream fur, pink ears and cheeks, cocoa outline, seated body, tail to left, mint bandana. Create its stormy/overwhelmed weather variant. A dark muted lavender-grey chunky pixel cloud floats above the ears, one unmistakable bright golden zigzag lightning bolt below the cloud. Mild worried eyebrows and tiny straight mouth; friendly and non-scary. Portrait canvas ratio 160:220. Keep full cat in lower 70% and weather in upper 20%, transparent margins. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/rainbow.png",
+      "prompt": "Use case: precise-object-edit. Image 1 is the exact Mochii cat to preserve: cream fur, pink ears and cheeks, cocoa outline, seated body, tail to left, mint bandana. Create its rainbow/hopeful weather variant. Above its head is one bold pixel rainbow arch with FOUR clean thick stair-step bands in peach pink, golden yellow, mint and lavender, ending in two tiny cream pixel clouds. Warm friendly smiling face. Portrait canvas ratio 160:220. Keep full cat in lower 70% and rainbow in upper 20%, transparent margins. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "logo.png",
+      "prompt": "Use case: logo-brand. Image 1 is a character/style reference, NOT a full-body edit target. Make a square app logo for Mochii. Close-up FACE ONLY of the same cream pixel kitten: pointed pink ears, cocoa dot eyes and tiny highlights, pink cheeks and little w smile. Center the entire head on a solid soft peach #FFC8A2 square badge with pixel stepped rounded corners; transparent outside badge corners. Give the ears padding within badge and make face bold and legible at favicon size. Square 1:1 canvas. No body, no bandana, no weather, no words or letters. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "together.png",
+      "prompt": "Use case: illustration-story. Image 1 is the exact Mochii character and pixel style reference. Create a wide 5:3 landscape standalone sign-in illustration, target aspect 600:360, of TWO adorable pixel cats sharing coffee in a little park. Left cat is this same cream Mochii kitten with mint bandana, right cat is a gentle lavender-grey kitten with peach bandana, both seated facing slightly toward each other with happy simple faces. Between them a small wooden picnic table with TWO clearly visible steaming cream coffee mugs. A small patch of mint grass under them, one simple leafy tree at each side, a few tiny peach flowers, small warm sun. Entire self-contained park vignette floats on TRANSPARENT background with generous empty padding, not a rectangular opaque sky. Friendly cozy social connection, chunky limited-color pixel art and bold clear silhouettes; cats and coffee are dominant. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "moods/foggy.png",
+      "revision": true,
+      "prompt": "Use case: precise-object-edit. Edit the supplied foggy Mochii cat. CHANGE ONLY THE FOG ABOVE ITS HEAD: replace all fuzzy translucent speckles, ghost pixels, halos and mist with EXACTLY THREE simple solid opaque pale blue-grey rectangular pixel fog bars, each with two or three chunky steps at its ends, dark cocoa pixel outlines, clean transparent gaps between the bars. No textures, no wisps, no feathered edges or haze. Remove the small fog wisp beside the shoulder too. Keep the cream cat, facial expression, bandana, pose, scale and position unchanged. Keep the portrait canvas and genuine transparent alpha background. Clean hard pixel geometry suitable for a 65px map sprite. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet."
+    },
+    {
+      "file": "navigation/nav-explore.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: A small folded paper map, ivory paper with mint land blocks and a single peach map-location pin, bold cocoa outlines. Three accordion panels visible, simple and friendly. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "navigation/nav-plans.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: Two small ivory coffee mugs with peach handles sitting side by side, with ONE tiny pink pixel heart above them, representing making plans together. No saucer, no table, no scenery. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "navigation/nav-space.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One friendly cat PAW PRINT: a large peach central bean-shaped pad and four smaller rounded square toe pads in pink, all with bold cocoa pixel outlines. No cat face, no fur, no extra symbols. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/coffee.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One ivory coffee mug with a mint stripe, cocoa coffee visible at the top and two simple blocky steam curls. Handle on right, strong readable cup silhouette. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/walk.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: A pair of simple mint walking sneakers with ivory soles and peach lace accents, one slightly behind the other, three-quarter side view. Clear hiking/walking activity symbol, no person, no scenery. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/cooking.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: A small ivory bowl of golden spaghetti with a peach-red tomato sauce accent and a tiny mint basil leaf, with a simple cocoa fork lifting three strands. Clear cooking/pasta symbol. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/gym.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One compact horizontal dumbbell, a cocoa bar between two chunky lavender weight stacks, small ivory highlights, simple symmetrical silhouette. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/groceries.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One mint shopping basket with cocoa handle containing an ivory loaf of bread, a peach-red apple and a single leafy mint vegetable. Few large readable shapes. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/sauna.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: A little warm wooden sauna bucket with a short ladle leaning out and two blocky ivory steam curls above. Warm peach wood, cocoa outlines, mint metal band. Clear sauna symbol without people. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/swimming.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One pair of mint and lavender swimming goggles above two bold short blue pixel water-wave bands. Simple swimming activity icon, no people. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/movie.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One small cocoa-and-ivory movie clapperboard with its striped top slightly open and a single peach play triangle on the board. No lettering or numbers. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/study.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: An open ivory book with mint cover, two or three short cocoa pixel lines on each page and a peach bookmark. Simple readable studying icon, no letters or actual words. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "activities/games.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: Two chunky ivory dice with cocoa dots, one showing three and the other showing five, peach and lavender side faces, playful compact composition. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/sunny.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One warm golden pixel sun with a round stair-stepped center and eight short chunky rays, cocoa outline. No face, no clouds. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/rainy.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One small blue-grey pixel cloud with three bright blue large pixel raindrops below, cocoa outline. No sun, no face. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/foggy.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: Exactly three separate solid pale blue-grey horizontal pixel fog bars with chunky stair-step ends and cocoa outlines. Crisp opaque geometry, transparent space between bars. No fuzzy mist or speckles. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/cloudy.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One large soft lavender pixel cloud with three rounded stair-step lobes and a flat bottom, cocoa outline. No rain, lightning, or sun. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/stormy.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One dark muted lavender pixel cloud with one large golden zigzag lightning bolt underneath, cocoa outline. No rain or face. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/rainbow.png",
+      "prompt": "Use case: stylized-concept. Asset type: ONE small UI icon for a cozy cat-themed social app called Mochii. Subject: One simple pixel rainbow arch with four thick stair-step color bands, peach pink, golden yellow, mint and lavender, and two tiny ivory clouds at the feet of the arch, cocoa outer outline. Square canvas, icon centered with 15% transparent margin, readable when shown 24 to 48 pixels wide. Draw as a true compact 32 by 32 logical-pixel game icon enlarged cleanly to a high-resolution PNG, crisp large square pixel clusters, approximately 8-12 flat colors. Palette cocoa #5B4636, ivory #FFF8EC, peach #FFC8A2, mint #BDE6CF, lavender #CFC4F2, soft blue #A9D6F5. Authentic cozy pixel art for Mochii social app: chunky visible square pixels and stair-step contours on a consistent logical 64px sprite grid, 2-pixel dark cocoa outlines, simple readable shapes at 65px, limited flat cream/peach/mint/lavender palette; no smooth vector edges, no blur, no gradients, no realistic rendering, no text, no watermark. Genuine transparent alpha background, not a checkerboard drawing. One single complete centered asset per file, no sprite sheet, no contact sheet. No solid background badge or backdrop; only the described object on genuine transparency."
+    },
+    {
+      "file": "weather/cloudy.png",
+      "revision": true,
+      "prompt": "Use case: precise-object-edit. The supplied image is a pixel-art thundercloud icon. Create the matching CLOUDY icon by REMOVING THE YELLOW LIGHTNING BOLT ENTIRELY. Keep the lavender cloud silhouette and its thick, completely opaque cocoa-brown hard pixel outline. The cloud bottom should be a single clean horizontal stepped edge where the lightning used to be. Center this cloud on a SQUARE transparent canvas with generous padding. Everything outside the cloud outline is fully transparent alpha zero. NO glow, NO shadow, NO halo, NO haze, NO gradients, NO translucent blur, NO sparkles, NO face, NO raindrops. Clean sharp stair-step pixel edges, flat lavender fill with at most one lighter lavender pixel highlight. ONE standalone UI cloud icon, no text."
+    }
+  ],
+  "sources": [
+    {
+      "file": "cat.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-54346272-e261-45b9-9c74-4882dc3d016c.png"
+    },
+    {
+      "file": "moods/sunny.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-9c62c17d-5f01-4d15-848d-d17094e0cbbd.png"
+    },
+    {
+      "file": "moods/rainy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-7c4e9622-cbcc-46ec-b3cf-0cc80074ec18.png"
+    },
+    {
+      "file": "moods/cloudy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-a82d93d5-5b63-4345-87d9-a523954ebfd7.png"
+    },
+    {
+      "file": "moods/stormy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-9b61d583-eab9-4e68-866c-4b9c32648383.png"
+    },
+    {
+      "file": "moods/rainbow.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-5c7215f9-da6c-4660-9818-a85613ed2052.png"
+    },
+    {
+      "file": "logo.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-abf81ce0-4d7e-41f8-9007-bdb5bf579d89.png"
+    },
+    {
+      "file": "together.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-9187812d-38ba-4a70-b24a-85fd6033cec7.png"
+    },
+    {
+      "file": "moods/foggy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-b8142c66-a2bf-4e5e-b4d2-b1b107520eaa.png"
+    },
+    {
+      "file": "navigation/nav-space.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-fedac51b-81eb-4fe3-9330-57605cf6c8dc.png"
+    },
+    {
+      "file": "navigation/nav-explore.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-4a81c49d-2440-4099-9d4b-af56683b8f64.png"
+    },
+    {
+      "file": "navigation/nav-plans.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-fbe4bd36-ec85-4d30-b43a-3eb53d20f702.png"
+    },
+    {
+      "file": "activities/walk.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-6537131d-598c-47db-864b-1b055eefb0a9.png"
+    },
+    {
+      "file": "activities/coffee.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-6e11757b-d3d0-4447-88c2-c3da3a2ec4c7.png"
+    },
+    {
+      "file": "activities/cooking.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-e0101e5e-167e-4e4a-b7ae-3806628c6ce1.png"
+    },
+    {
+      "file": "activities/gym.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-88e1b702-ba31-4106-8af9-b39e1ab41c12.png"
+    },
+    {
+      "file": "activities/swimming.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-81cd4d9f-19e6-4a23-b29c-7135822d64f9.png"
+    },
+    {
+      "file": "activities/groceries.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-156d280a-e474-4463-a95a-d4f05d5cfcaa.png"
+    },
+    {
+      "file": "activities/movie.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-efb01c21-44db-4158-b3c7-cf2a4b0ac530.png"
+    },
+    {
+      "file": "activities/study.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-f12165ca-41b0-4e9b-9917-aad32a25aad1.png"
+    },
+    {
+      "file": "activities/sauna.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-f55cb98c-14b5-4d73-bf28-f5641eb7ce31.png"
+    },
+    {
+      "file": "activities/games.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-aa0c4c59-d224-4d49-802a-709bf6c23d72.png"
+    },
+    {
+      "file": "weather/rainy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-8dddd18f-7005-417e-ae7c-51f93aeb1e32.png"
+    },
+    {
+      "file": "weather/foggy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-bd49b83d-e04c-44a4-840c-03d779de013f.png"
+    },
+    {
+      "file": "weather/stormy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-148aaa80-fefd-4cea-b69f-e84aa17f180a.png"
+    },
+    {
+      "file": "weather/sunny.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-cc732211-47fe-44d4-b548-a342bebd0e51.png"
+    },
+    {
+      "file": "weather/rainbow.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-47764dcc-af0b-484c-9299-fb66b1970b02.png"
+    },
+    {
+      "file": "weather/cloudy.png",
+      "source": "C:\\Users\\mayznot\\.codex\\generated_images\\01a1d7bb-6119-7e83-bade-c9caa53bc556\\exec-ecee8d7f-e088-4dfb-96b7-9329654700d1.png"
+    }
+  ]
+}
