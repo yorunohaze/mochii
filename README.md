@@ -16,6 +16,7 @@ Built for people recovering from depression, where reaching out is the hardest p
 5. **On the day:** a reminder ("Heading out to meet Sam soon?" → *On my way*), with a map link.
 6. **GPS notices you met** ("You're together with Sam ✨"). Afterwards there's one question: *"Did it lift you a bit?"*
 7. **Eden learns** from every yes and no. It learns what each person likes, at which times, and with whom. On quieter stretches (several no's, days without company, staying home) it suggests smaller, closer, easier things and asks less often. If outings keep feeling flat, it gently suggests talking to someone you trust.
+8. **A short check-in every two weeks, if you say yes.** It uses three validated questionnaires (WHO-5, PHQ-8 and a three-item loneliness scale), one question per card. A worrying check-in makes Eden gentler. With a second yes, a care team sees how you've been between visits. Sources and rules: [CHECKINS.md](CHECKINS.md).
 
 No feeds, no chat, no streaks, no scores.
 
@@ -43,7 +44,16 @@ The terminal prints a **QR code** and an address like `https://192.168.0.203:344
 - **Remind now**, **Pretend they met**, **End → ask how it went** to fast-forward a plan
 - **quieter days**, to see Eden switch to gentler suggestions
 - **Put everyone without GPS near Aalto**, for testing on laptops
+- **Check-in now**, and **+ sample: steady / slipping** to give someone a made-up check-in history
 - **Reset everything**
+
+**Care-team view** (this computer only): <http://localhost:3000/clinician>. It shows people who chose to share their check-ins. Each one gets a status from fixed, cited rules ("Doing okay", "Keep an eye on", "Might need a call"), the reasons, their check-in history and their meet-ups. To add AI-written summaries, start Eden with an Anthropic API key:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-... node server/index.js --demo
+```
+
+(PowerShell: `$env:ANTHROPIC_API_KEY="sk-ant-..."; node server/index.js --demo`)
 
 Testing alone on one computer: open `http://localhost:3000` and `http://127.0.0.1:3000` in the same browser. They keep separate logins, so you can be two people.
 
@@ -63,7 +73,8 @@ Open the `https://….trycloudflare.com` address it prints. On iPhone (iOS 16.4+
 
 ## Privacy
 
-- Everything is stored in `data/` on the host's laptop. Nothing goes to a cloud service.
+- Everything is stored in `data/` on the host's laptop. Nothing goes to a cloud service, with one optional exception: if the host sets `ANTHROPIC_API_KEY`, AI summaries send the check-in numbers of people who chose to share to Claude. Claude never gets a name, place, friend or date (details in [CHECKINS.md](CHECKINS.md)).
+- Check-ins are opt-in, and sharing them with a care team is a second, separate yes. Both can be changed any time in the menu (☰). The host's activity log never shows answers.
 - Other people only see **roughly how far away** you are ("about 1 km"), never where you are.
 - For home activities (cooking, movie night, games), the guest gets directions only after the host has said yes to hosting and to that plan.
 - To find places, Eden sends only a rough area centre (about 2 km) to OpenStreetMap's public API, never a name or exact position. Results are cached for a day. Set `EDEN_PLACES=off` to turn this off. Eden then says "a café near you both" with a map search instead.
@@ -84,11 +95,14 @@ server/index.js       HTTP + HTTPS server, accounts, live updates (SSE), host AP
 server/engine.js      the initiator: pairing, activity/time/place choice, cards, reminders,
                       GPS meet-up detection, learning (Thompson sampling), quieter-stretch care
 server/activities.js  the things to do together (add your own here)
+server/questionnaires.js  the check-in: WHO-5, PHQ-8, loneliness scale (published wording and scoring)
+server/clinician.js   care-team view: status rules and optional AI summaries (Claude)
 server/places.js      real places from OpenStreetMap (combined, cached lookups)
 server/security.js    password hashing, sessions, self-signed certificate
 server/push.js        optional Web Push
 server/store.js       JSON file storage in data/
 public/index.html, app.js, styles.css   the phone app (one card at a time)
 public/admin.html     host dashboard
+public/clinician.html care-team view (people who shared their check-ins)
 public/sw.js          service worker: notifications with Yes / No buttons, answered without opening Eden
 ```

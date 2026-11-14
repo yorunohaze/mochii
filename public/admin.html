@@ -55,6 +55,7 @@
       <header>
         <h1><img src="/icons/icon.svg" alt="" /> Eden · host dashboard</h1>
         <div class="bar">
+          <a href="/clinician">Care-team view</a>
           <label class="toggle"><input type="checkbox" id="demo" /> Demo rhythm (fast suggestions)</label>
           <button id="place">Put everyone without GPS near Aalto</button>
           <button class="danger" id="reset">Reset everything</button>
@@ -137,6 +138,7 @@
                     u.canHost ? h('span', { class: 'chip' }, '🏠 can host') : null,
                     u.needsCompany ? h('span', { class: 'chip warm' }, 'quieter stretch') : null,
                     u.paused ? h('span', { class: 'chip' }, 'on a break') : null,
+                    u.checkins.on ? h('span', { class: 'chip good' }, `📋 ${u.checkins.count} check-in${u.checkins.count === 1 ? '' : 's'}${u.checkins.inProgress ? ' · one in progress' : ''}${u.checkins.share ? ' · shared' : ''}`) : null,
                     u.distances.length ? h('div', { class: 'muted' }, u.distances.map((d) => `${d.name}: ${d.text}`).join(' · ')) : null,
                   ),
                   h('td', {}, u.openCard ?? h('span', { class: 'muted' }, 'nothing right now')),
@@ -149,6 +151,11 @@
                     h('label', { class: 'toggle', title: 'Pretend this person has been home a lot (Eden gets gentler)' },
                       h('input', { type: 'checkbox', checked: u.quiet || null, onchange: (e) => post('quiet', { userId: u.id, on: e.target.checked }) }), 'quieter days'),
                     h('button', { class: 'danger', onclick: () => confirm(`Remove ${u.name}?`) && post('remove', { userId: u.id }) }, 'Remove'),
+                  ),
+                  h('div', { class: 'bar', style: 'margin-top:6px' },
+                    h('button', { title: 'Asks first if they haven\'t said yes to check-ins yet', onclick: () => post('survey', { userId: u.id }) }, 'Check-in now'),
+                    h('button', { title: 'Four made-up check-ins two weeks apart, for the care-team view', onclick: () => post('sample', { userId: u.id, trend: 'steady' }) }, '+ sample: steady'),
+                    h('button', { onclick: () => post('sample', { userId: u.id, trend: 'slipping' }) }, '+ sample: slipping'),
                   )),
                 ),
               )

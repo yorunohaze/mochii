@@ -4,13 +4,16 @@
   "private": true,
   "description": "Eden: Eden asks, you answer yes or no. A web app you host yourself.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server/index.js",
     "demo": "node server/index.js --demo",
     "check": "node --check server/index.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "1.8.0",
     "qrcode": "1.5.4",
     "selfsigned": "5.5.0",
     "web-push": "3.6.7"

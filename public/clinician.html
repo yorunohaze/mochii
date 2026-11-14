@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eden care team</title>
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #f5f1ea; --card: #fff; --alt: #ede7dc; --text: #1c2620; --muted: #5e6b63; --line: #e2dbcf;
+        --accent: #3e6b55; --soft: #dce8df; --warm: #c9714a; --warm-soft: #f6e2d6; --danger: #b5483f; --danger-soft: #f3d9d5;
+        color-scheme: light;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1512; --card: #18211c; --alt: #202b25; --text: #ecf1ec; --muted: #9aa79f; --line: #2a3630;
+          --accent: #7fb59a; --soft: #22362c; --warm: #efa07c; --warm-soft: #3a2a22; --danger: #e07a70; --danger-soft: #3d2320;
+          color-scheme: dark;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 ui-rounded, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
+      header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+      h1 { margin: 0; font-size: 22px; display: flex; gap: 10px; align-items: center; }
+      h1 img { width: 28px; height: 28px; }
+      h2 { margin: 0; font-size: 19px; }
+      h3 { margin: 0 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+      p { margin: 0; }
+      a { color: var(--accent); }
+      .muted { color: var(--muted); }
+      .panel { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: grid; gap: 14px; }
+      .top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .chip { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--alt); font-size: 13px; font-weight: 600; }
+      .chip.l0 { background: var(--soft); }
+      .chip.l1 { background: var(--warm-soft); }
+      .chip.l2 { background: var(--danger-soft); color: var(--danger); }
+      .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+      @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+      ul { margin: 0; padding-left: 18px; }
+      table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+      th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+      .ai { background: var(--alt); border-radius: 14px; padding: 12px 14px; display: grid; gap: 8px; }
+      button { font: inherit; border: 1px solid var(--accent); background: var(--accent); color: var(--bg); border-radius: 999px; padding: 6px 14px; cursor: pointer; justify-self: start; }
+      button[disabled] { opacity: 0.55; cursor: default; }
+      .error { color: var(--danger); }
+      .refs li { margin-bottom: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1><img src="/icons/icon.svg" alt="" /> Eden · care team view</h1>
+        <a href="/admin">Host dashboard</a>
+      </header>
+      <p class="muted">
+        People who chose to share their check-ins, compared only with their own earlier answers. A quick look between visits to see
+        who might need a call. It is not a diagnosis.
+      </p>
+      <p class="muted" id="ai-off" hidden>AI summaries are off. Set <code>ANTHROPIC_API_KEY</code> on this computer and restart Eden to turn them on.</p>
+      <div id="people"></div>
+      <p class="muted" id="others"></p>
+
+      <section class="panel">
+        <h2>About these measures</h2>
+        <p>
+          Every two weeks, people who said yes answer three validated questionnaires, one question per card, with the published
+          wording and answer options: <b>WHO-5</b> wellbeing (0–100), <b>PHQ-8</b> depression symptoms (0–24) and the
+          <b>Three-Item Loneliness Scale</b> (3–9). The PHQ-8 is the PHQ-9 without the question about self-harm, because nobody
+          watches the answers in real time. The status comes from fixed rules. <b>Might need a call:</b> PHQ-8 of 15 or more, or up
+          5+ points since their first check-in. <b>Keep an eye on:</b> PHQ-8 of 10 or more, WHO-5 of 50 or less or down 10+ points
+          since their first check-in, loneliness of 6 or more, no check-in for three weeks, “no” to every suggestion in two weeks,
+          or two meet-ups that felt flat. AI summaries see only the numbers: no name, place, partner or date.
+        </p>
+        <ul class="refs muted">
+          <li>Kroenke, Spitzer &amp; Williams (2001). The PHQ-9: validity of a brief depression severity measure. <i>J Gen Intern Med</i> 16(9):606–613. <a href="https://doi.org/10.1046/j.1525-1497.2001.016009606.x">doi</a></li>
+          <li>Kroenke et al. (2009). The PHQ-8 as a measure of current depression in the general population. <i>J Affect Disord</i> 114(1–3):163–173. <a href="https://doi.org/10.1016/j.jad.2008.06.026">doi</a></li>
+          <li>Wu, Levis et al. (2020). Equivalency of the diagnostic accuracy of the PHQ-8 and PHQ-9. <i>Psychol Med</i> 50(8):1368–1380. <a href="https://doi.org/10.1017/S0033291719001314">doi</a></li>
+          <li>Löwe et al. (2004). Monitoring depression treatment outcomes with the PHQ-9. <i>Med Care</i> 42(12):1194–1201. <a href="https://doi.org/10.1097/00005650-200412000-00006">doi</a></li>
+          <li>Topp et al. (2015). The WHO-5 Well-Being Index: a systematic review of the literature. <i>Psychother Psychosom</i> 84(3):167–176. <a href="https://doi.org/10.1159/000376585">doi</a></li>
+          <li>Hughes et al. (2004). A short scale for measuring loneliness in large surveys. <i>Res Aging</i> 26(6):655–672. <a href="https://doi.org/10.1177/0164027504268574">doi</a></li>
+          <li>Buckman et al. (2018). Risk factors for relapse and recurrence of depression in adults. <i>Clin Psychol Rev</i> 64:13–38. <a href="https://doi.org/10.1016/j.cpr.2018.07.005">doi</a></li>
+          <li>Wang et al. (2018). Loneliness, perceived social support and outcomes of mental health problems. <i>BMC Psychiatry</i> 18:156. <a href="https://doi.org/10.1186/s12888-018-1736-5">doi</a></li>
+        </ul>
+      </section>
+    </div>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      function h(tag, props = {}, ...kids) {
+        const el = document.createElement(tag);
+        for (const [k, v] of Object.entries(props)) {
+          if (v == null || v === false) continue;
+          if (k === 'class') el.className = v;
+          else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+          else el.setAttribute(k, v === true ? '' : v);
+        }
+        for (const c of kids.flat()) if (c != null && c !== false) el.append(c instanceof Node ? c : String(c));
+        return el;
+      }
+      const date = (t) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+      const time = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      const writing = new Set(); // people whose AI summary is being written
+      const errors = new Map();
+      let last = null;
+
+      async function summarize(id) {
+        writing.add(id);
+        errors.delete(id);
+        render(last);
+        try {
+          const r = await fetch('/api/clinician/summary', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: id }) });
+          const data = await r.json();
+          if (data.error) errors.set(id, data.error);
+        } catch {
+          errors.set(id, "Couldn't reach Eden.");
+        }
+        writing.delete(id);
+        await refresh();
+      }
+
+      function aiBlock(p, ready) {
+        if (p.ai) {
+          return h('div', { class: 'ai' },
+            h('h3', {}, 'AI summary'),
+            h('p', {}, h('b', {}, p.ai.headline)),
+            h('p', {}, p.ai.summary),
+            p.ai.askAbout.length ? [h('p', { class: 'muted' }, 'Worth asking about:'), h('ul', {}, p.ai.askAbout.map((x) => h('li', {}, x)))] : null,
+            h('p', { class: 'muted' }, `Written by ${p.ai.model} at ${time(p.ai.at)} from the numbers only. Check it against the table.`),
+          );
+        }
+        return h('div', { class: 'ai' },
+          h('h3', {}, 'AI summary'),
+          h('button', { disabled: !ready || writing.has(p.id), onclick: () => summarize(p.id) }, writing.has(p.id) ? 'Writing…' : 'Write AI summary'),
+          errors.has(p.id) ? h('p', { class: 'error' }, errors.get(p.id)) : null,
+        );
+      }
+
+      function person(p, ready) {
+        const r = p.activity.recent;
+        const b = p.activity.before;
+        return h('section', { class: 'panel' },
+          h('div', { class: 'top' },
+            h('h2', {}, p.name),
+            h('span', { class: `chip l${p.status.level}` }, p.status.label),
+            p.sample ? h('span', { class: 'chip' }, 'includes sample data') : null,
+          ),
+          h('div', { class: 'cols' },
+            h('div', {},
+              h('h3', {}, 'Why'),
+              p.reasons.length ? h('ul', {}, p.reasons.map((x) => h('li', {}, x))) : h('p', { class: 'muted' }, 'Nothing stands out.'),
+            ),
+            h('div', {}, h('h3', {}, 'Summary'), h('p', {}, p.summary)),
+          ),
+          aiBlock(p, ready),
+          h('div', { class: 'cols' },
+            h('div', {},
+              h('h3', {}, 'Check-ins'),
+              p.checkins.length
+                ? h('table', {},
+                    h('thead', {}, h('tr', {}, h('th', {}, 'Date'), h('th', {}, 'PHQ-8'), h('th', {}, 'WHO-5'), h('th', {}, 'Lonely'))),
+                    h('tbody', {}, [...p.checkins].reverse().map((c) =>
+                      h('tr', {},
+                        h('td', {}, date(c.at), c.sample ? h('span', { class: 'muted' }, ' (sample)') : null),
+                        h('td', {}, `${c.phq8} `, h('span', { class: 'muted' }, c.band)),
+                        h('td', {}, `${c.who5}/100`),
+                        h('td', {}, `${c.tils}/9`),
+                      ))),
+                  )
+                : h('p', { class: 'muted' }, 'No check-ins yet.'),
+            ),
+            h('div', {},
+              h('h3', {}, 'Meet-ups'),
+              h('p', {}, `Last 2 weeks: ${r.suggestions} suggested, said yes to ${r.saidYes}, met up ${r.metUp}×, lifted mood ${r.liftedMood}×, felt flat ${r.feltFlat}×.`),
+              r.leftUnanswered ? h('p', { class: 'muted' }, `${r.leftUnanswered} suggestions left unanswered.`) : null,
+              h('p', { class: 'muted' }, `The 2 weeks before: ${b.suggestions} suggested, met up ${b.metUp}×.`),
+              p.activity.lastMeetupAt ? h('p', { class: 'muted' }, `Last meet-up: ${date(p.activity.lastMeetupAt)}.`) : null,
+            ),
+          ),
+        );
+      }
+
+      function render(s) {
+        if (!s) return;
+        last = s;
+        $('ai-off').hidden = s.aiReady;
+        $('people').replaceChildren(
+          ...(s.people.length
+            ? s.people.map((p) => person(p, s.aiReady))
+            : [h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Nobody has shared their check-ins yet. People are asked after their first check-in, and can change it in their menu (☰).'))]),
+        );
+        $('others').textContent = s.notSharing ? `${s.notSharing} ${s.notSharing === 1 ? 'person uses' : 'people use'} Eden without sharing. They don't appear here.` : '';
+      }
+
+      async function refresh() {
+        try {
+          const r = await fetch('/api/clinician/state');
+          if (r.ok) render(await r.json());
+        } catch {
+          // server restarting
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 10000);
+    </script>
+  </body>
+</html>

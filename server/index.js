@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import QRCode from 'qrcode';
 
+import * as clinician from './clinician.js';
 import * as engine from './engine.js';
 import { vapidPublicKey } from './push.js';
 import { checkPassword, hashPassword, loadOrCreateCert, newToken } from './security.js';
@@ -155,10 +156,20 @@ async function api(req, res, url) {
     return json(res, 200, { people: Object.keys(db.users).length, demo: engine.config.demo, vapidPublicKey });
   }
 
-  /* ---- host dashboard (only from the host computer) ---- */
+  /* ---- host dashboard and care-team view (only from the host computer) ---- */
   if (url.pathname.startsWith('/api/admin/')) {
     if (!isLocal(req)) return json(res, 403, { error: 'Host only' });
     return adminApi(req, res, url);
+  }
+  if (url.pathname.startsWith('/api/clinician/')) {
+    if (!isLocal(req)) return json(res, 403, { error: 'Host only' });
+    if (route === 'GET /api/clinician/state') return json(res, 200, clinician.overview());
+    if (route === 'POST /api/clinician/summary') {
+      const { userId } = await readJson(req);
+      const r = await clinician.aiSummary(String(userId));
+      return json(res, r.error ? 400 : 200, r);
+    }
+    return json(res, 404, { error: 'Not found' });
   }
 
   /* ---- everything below needs an account ---- */
@@ -171,8 +182,8 @@ async function api(req, res, url) {
     case 'GET /api/stream':
       return openStream(req, res, user);
     case 'POST /api/answer': {
-      const { cardId, yes } = await readJson(req);
-      const done = engine.answer(user.id, String(cardId), !!yes);
+      const { cardId, yes, value } = await readJson(req);
+      const done = engine.answer(user.id, String(cardId), !!yes, typeof value === 'number' ? value : undefined);
       return json(res, done ? 200 : 409, { ...engine.stateFor(user.id), reply: done?.reply ?? null });
     }
     case 'POST /api/location': {
@@ -193,6 +204,11 @@ async function api(req, res, url) {
       const { subscription } = await readJson(req);
       user.push = subscription && subscription.endpoint ? subscription : null;
       save();
+      return json(res, 200, engine.stateFor(user.id));
+    }
+    case 'POST /api/checkins': {
+      const { on, share, start } = await readJson(req);
+      engine.setSurveys(user.id, { on: typeof on === 'boolean' ? on : null, share: typeof share === 'boolean' ? share : null, start: start === true });
       return json(res, 200, engine.stateFor(user.id));
     }
     case 'POST /api/pause': {
@@ -245,6 +261,12 @@ async function adminApi(req, res, url) {
     case 'place':
       engine.admin.place();
       break;
+    case 'survey':
+      engine.admin.survey(body.userId);
+      break;
+    case 'sample':
+      engine.admin.sample(body.userId, body.trend);
+      break;
     case 'remove':
       engine.admin.remove(body.userId);
       break;
@@ -265,10 +287,11 @@ async function adminApi(req, res, url) {
 /* ------------------------------------------------------------------ static */
 
 function serveStatic(req, res, pathname) {
-  if (pathname === '/admin') {
-    if (!isLocal(req)) return send(res, 403, 'The host dashboard only opens on the host computer.');
-    pathname = '/admin.html';
+  if (pathname === '/admin' || pathname === '/clinician') {
+    if (!isLocal(req)) return send(res, 403, 'This page only opens on the host computer.');
+    pathname = `${pathname}.html`;
   }
+  if ((pathname === '/admin.html' || pathname === '/clinician.html') && !isLocal(req)) return send(res, 403, 'This page only opens on the host computer.');
   if (pathname === '/') pathname = '/index.html';
   const file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
   if (!file.startsWith(PUBLIC)) return send(res, 403, 'Forbidden');
@@ -314,4 +337,5 @@ if (urls[0]) {
   console.log('  (First time: tap "Show Details" → "visit this website". It\'s your own laptop.)\n');
 }
 console.log(`  Host dashboard (this computer only): http://localhost:${PORT}/admin`);
+console.log(`  Care-team view (this computer only): http://localhost:${PORT}/clinician${clinician.aiReady() ? '' : '  (AI summaries: set ANTHROPIC_API_KEY)'}`);
 console.log(`  On this computer:                    http://localhost:${PORT}\n`);
