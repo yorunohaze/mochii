@@ -18,7 +18,7 @@ async function freePort() {
   return port;
 }
 
-test('mood API authenticates, streams to visible friends, and persists across restart', { timeout: 30000 }, async () => {
+test('mood and availability APIs authenticate, stream changes, and persist across restart', { timeout: 30000 }, async () => {
   const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mochii-mood-api-'));
   const port = await freePort();
   let httpsPort = await freePort();
@@ -62,12 +62,18 @@ test('mood API authenticates, streams to visible friends, and persists across re
     await start();
     const anonymous = client(), alice = client(), bob = client();
     assert.equal((await anonymous.request('/api/mood', { mood: 'sunny' })).status, 401);
+    assert.equal((await anonymous.request('/api/availability', {})).status, 401);
     for (const [c, name] of [[alice, 'Alice'], [bob, 'Bob']]) {
       assert.equal((await c.request('/api/signup', { name, username: name.toLowerCase(), password: 'test-password' })).status, 200);
       await c.request('/api/location', { lat: 60.1901234, lon: 24.8312345, acc: 15 });
     }
     assert.equal((await bob.request('/api/mood', { mood: '../../invalid' })).status, 400);
     assert.equal((await bob.request('/api/mood', {})).status, 400);
+    const week = { enabled: true, timeZone: 'UTC', days: [[36, 37], [], [], [], [], [20, 21], []] };
+    for (const invalid of [{}, { ...week, timeZone: 'not-a-zone' }, { ...week, days: [[48], [], [], [], [], [], []] }]) {
+      assert.equal((await alice.request('/api/availability', invalid)).status, 400);
+    }
+    assert.equal((await alice.request('/api/state')).data.me.availability, null);
     await bob.request('/api/mood', { mood: 'rainy' });
     assert.equal((await alice.request('/api/state')).data.map.friends.length, 0);
     await bob.request('/api/map', { showArea: true });
@@ -98,6 +104,15 @@ test('mood API authenticates, streams to visible friends, and persists across re
       }
     }
     assert.equal((await nextState()).map.friends[0].mood, 'rainy');
+    const saved = await alice.request('/api/availability', week);
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.data.me.availability, week);
+    let scheduleUpdate;
+    do { scheduleUpdate = await nextState(); } while (!scheduleUpdate.me.availability);
+    assert.deepEqual(scheduleUpdate.me.availability, week);
+    const friendState = (await bob.request('/api/state')).data;
+    assert.equal(friendState.me.availability, null);
+    assert.ok(friendState.groups.every(g => g.members.every(m => !Object.hasOwn(m, 'availability'))));
     await bob.request('/api/mood', { mood: 'sunny' });
     let streamed;
     do { streamed = await nextState(); } while (streamed.map.friends[0]?.mood !== 'sunny');
@@ -109,6 +124,8 @@ test('mood API authenticates, streams to visible friends, and persists across re
     await stop();
     await start();
     assert.equal((await bob.request('/api/state')).data.me.mood, 'sunny');
+    assert.deepEqual((await alice.request('/api/state')).data.me.availability, week);
+    assert.equal((await alice.request('/api/availability', { ...week, enabled: false })).data.me.availability.enabled, false);
     await bob.request('/api/mood', { mood: null });
     assert.equal((await alice.request('/api/state')).data.map.friends[0].mood, null);
     await bob.request('/api/map', { showArea: false });

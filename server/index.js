@@ -355,6 +355,11 @@ async function api(req, res, url) {
       if (!engine.setMood(user.id, mood)) return json(res, 400, { error: 'Choose a weather mood, or clear it.' });
       return json(res, 200, engine.stateFor(user.id));
     }
+    case 'POST /api/availability': {
+      const body = await readJson(req);
+      if (!engine.setAvailability(user.id, body)) return json(res, 400, { error: 'Choose a valid time zone and a week of 30-minute time blocks.' });
+      return json(res, 200, engine.stateFor(user.id));
+    }
     case 'POST /api/pause': {
       const { days } = await readJson(req);
       engine.setPause(user.id, Math.max(0, Math.min(30, Number(days) || 0)));

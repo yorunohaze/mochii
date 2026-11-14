@@ -12,6 +12,7 @@
 //  - It only ever pairs people who share a friend group, or two people who both turned on stranger mode (18+, public
 //    places in daytime, no homes, no live location, a safety question afterwards).
 import { ACTIVITIES, byId, SLOTS, TIME_QUESTIONS } from './activities.js';
+import { DEFAULT_ZONE, fitsAvailability, localTime, normalizeAvailability } from './availability.js';
 import {
   allGroups, allReports, block, blocked, connected, createPairGroup, friendIdsOf, groupsFor, groupsOf, removeUserFromGroups,
 } from './circles.js';
@@ -112,6 +113,7 @@ export function createUser({ name, username, pass }) {
     createdAt: Date.now(),
     prefs: {},
     times: {},
+    availability: null,
     canHost: null,
     loc: null,
     home: null,
@@ -629,8 +631,24 @@ export function setSurveys(userId, { on, share, start }) {
 
 /* ---------------------------------------------------------------- the initiator */
 
+export function setAvailability(userId, value) {
+  const u = db.users[userId];
+  const availability = normalizeAvailability(value);
+  if (!u || !availability) return false;
+  u.availability = availability;
+  // Pending suggestions must obey the new filter; already confirmed plans are commitments.
+  for (const plan of Object.values(db.plans)) {
+    if (plan.status === 'proposed' && plan.userIds.includes(userId) &&
+        !fitsAvailability(availability, plan.startAt, plan.endAt)) cancelPlan(plan, userId, 'availability');
+  }
+  changed(userId);
+  setTimeout(() => void tick(), 300);
+  return true;
+}
+
 function available(u, now = Date.now()) {
   if (!u || u.paused > now) return false;
+  if (u.availability?.enabled && !u.availability.days.some(day => day.length)) return false;
   if (!u.asked.location || STARTER.some((id) => !u.asked.prefs.includes(id))) return false; // still onboarding
   if (activePlans(u.id).length) return false;
   if (openCards(u.id).some((c) => c.kind === 'proposal')) return false;
@@ -667,32 +685,37 @@ export async function propose(initiatorId, { force = false } = {}) {
     return { v, d, stranger, score: sample(pair) * near * rotation * care * (stranger ? 0.6 : 1) }; // friends first
   });
   scored.sort((a, b) => b.score - a.score);
-  const { v, d, stranger } = scored[0];
-  const mode = stranger ? 'stranger' : 'friends';
-
-  // What: an activity both are likely to say yes to. Smaller and easier on quieter stretches.
-  const low = needsCompany(u) || needsCompany(v);
-  const hosts = [u, v].filter((x) => x.canHost === true && x.loc);
   const recent = Object.values(db.plans)
     .filter((p) => p.userIds.includes(u.id) && now - p.createdAt < 3 * DAY)
     .map((p) => p.activityId);
-  const options = ACTIVITIES.map((act) => {
-    if (stranger && !act.strangerOk) return null; // public, daytime, low-intimacy things only
-    if (act.home && (!hosts.length || (d != null && d > 15000))) return null;
-    let s = sample(beta(u.prefs, act.id)) * sample(beta(v.prefs, act.id));
-    if (low) s *= [1.5, 1, 0.3][act.energy];
-    if (recent.includes(act.id)) s *= 0.5; // rotate, so suggestions don't wear off
-    return { act, s };
-  })
-    .filter(Boolean)
-    .sort((a, b) => b.s - a.s);
-  if (!options.length) return null;
-  const act = options[0].act;
+  let match = null;
+  // Try other activities and other people when the highest-ranked choice has no shared time.
+  for (const { v, d, stranger } of scored) {
+    const mode = stranger ? 'stranger' : 'friends';
+    const low = needsCompany(u) || needsCompany(v);
+    const hosts = [u, v].filter(x => x.canHost === true && x.loc);
+    const options = ACTIVITIES.map(act => {
+      if (stranger && !act.strangerOk) return null;
+      if (act.home && (!hosts.length || (d != null && d > 15000))) return null;
+      let s = sample(beta(u.prefs, act.id)) * sample(beta(v.prefs, act.id));
+      if (low) s *= [1.5, 1, 0.3][act.energy];
+      if (recent.includes(act.id)) s *= 0.5;
+      return { act, s };
+    }).filter(Boolean).sort((a, b) => b.s - a.s);
+    for (const { act } of options) {
+      const time = pickTime(u, v, act, now, mode);
+      if (time) { match = { v, stranger, mode, low, hosts, act, time }; break; }
+    }
+    if (match) break;
+  }
+  if (!match) return null;
+  const { v, stranger, mode, low, hosts, act, time } = match;
+  const { startAt, slot } = time;
+  const length = T().length ?? act.minutes * MIN;
 
   proposing.add(u.id);
   proposing.add(v.id);
   try {
-    const { startAt, slot } = pickTime(u, v, act, now, mode);
     let place;
     let hostId = null;
     if (act.home) {
@@ -708,8 +731,9 @@ export async function propose(initiatorId, { force = false } = {}) {
     }
     if (stranger && !place.found) return null; // strangers only ever meet at a real, named public place
     if (!(force ? db.users[u.id] : available(u)) || !available(v)) return null; // things changed while looking
+    if (!fitsAvailability(u.availability, startAt, startAt + length) ||
+        !fitsAvailability(v.availability, startAt, startAt + length)) return null;
 
-    const length = T().length ?? act.minutes * MIN;
     const plan = {
       id: newId(),
       activityId: act.id,
@@ -717,6 +741,7 @@ export async function propose(initiatorId, { force = false } = {}) {
       userIds: [u.id, v.id],
       hostId,
       slot,
+      timeSlots: time.timeSlots,
       startAt,
       endAt: startAt + length,
       place,
@@ -740,12 +765,36 @@ export async function propose(initiatorId, { force = false } = {}) {
   }
 }
 
-function pickTime(u, v, act, now, mode = 'friends') {
-  if (config.demo) {
+export function pickTime(u, v, act, now, mode = 'friends') {
+  const filtered = u.availability?.enabled || v.availability?.enabled;
+  if (config.demo && !filtered) {
     const startAt = Math.ceil((now + T().startIn) / (5 * MIN)) * 5 * MIN;
     return { startAt, slot: slotOf(new Date(startAt).getHours()) };
   }
   const options = [];
+  if (filtered) {
+    const length = T().length ?? act.minutes * MIN;
+    const zoneU = u.availability?.timeZone || v.availability?.timeZone || DEFAULT_ZONE;
+    const zoneV = v.availability?.timeZone || zoneU;
+    const step = 15 * MIN; // also accommodates time zones offset by 15/45 minutes
+    const earliest = now + (config.demo ? T().startIn : 2 * HOUR);
+    for (let startAt = Math.ceil(earliest / step) * step; startAt < now + 8 * DAY; startAt += step) {
+      const endAt = startAt + length;
+      const a = localTime(startAt, zoneU), b = localTime(startAt, zoneV);
+      const slotU = slotOf(a.hour), slotV = slotOf(b.hour);
+      if (!act.times.includes(slotU) || !act.times.includes(slotV)) continue;
+      if (mode === 'stranger') {
+        const endA = localTime(endAt - 1, zoneU), endB = localTime(endAt - 1, zoneV);
+        if ([a, b, endA, endB].some(t => t.hour < 8 || t.hour >= 17)) continue;
+      }
+      if (!fitsAvailability(u.availability, startAt, endAt) || !fitsAvailability(v.availability, startAt, endAt)) continue;
+      const soon = 1 / (1 + (startAt - now) / DAY);
+      options.push({ startAt, slot: slotU, timeSlots: { [u.id]: slotU, [v.id]: slotV },
+        s: sample(beta(u.times, slotU)) * sample(beta(v.times, slotV)) * soon });
+    }
+    options.sort((a, b) => b.s - a.s);
+    return options[0] ?? null;
+  }
   for (let day = 0; day < 3; day++) {
     // Meeting someone new: daytime only.
     const slots = mode === 'stranger' ? act.times.filter((x) => x !== 'evening') : act.times;
@@ -759,10 +808,10 @@ function pickTime(u, v, act, now, mode = 'friends') {
     }
   }
   options.sort((a, b) => b.s - a.s);
-  return options[0] ?? { startAt: now + 3 * HOUR, slot: slotOf(new Date(now + 3 * HOUR).getHours()) };
+  return options[0] ?? null;
 }
 
-const slotOf = (h) => (h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening');
+const slotOf = (h) => (h >= 7 && h < 12 ? 'morning' : h >= 12 && h < 17 ? 'afternoon' : 'evening');
 
 function placeLine(plan, me, other) {
   const p = plan.place;
@@ -902,7 +951,7 @@ function onProposal(u, c, yes) {
   const other = otherOf(plan, u.id);
   plan.answers[u.id] = yes;
   bump(u.prefs, plan.activityId, yes, 1);
-  bump(u.times, plan.slot, yes, 0.5);
+  bump(u.times, plan.timeSlots?.[u.id] ?? plan.slot, yes, 0.5);
   u.noStreak = yes ? 0 : u.noStreak + 1;
 
   if (!yes) {
@@ -1235,6 +1284,7 @@ export function stateFor(userId) {
     me: {
       id: u.id, name: u.name, username: u.username, paused: u.paused > now ? u.paused : 0, wantsLocation: u.asked.location, hasPush: !!u.push,
       mood: moodFor(u),
+      availability: u.availability ?? null,
       checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, lastAt: u.surveys?.at(-1)?.at ?? null, inProgress: !!u.survey },
       stranger: { on: !!u.stranger?.on, adult: !!u.stranger?.adult },
       clinician: !!u.clinician,

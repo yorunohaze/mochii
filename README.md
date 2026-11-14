@@ -23,6 +23,14 @@ The existing `eden` session cookie, browser preferences, `EDEN_*` environment va
 
 No feeds, no chat, no streaks, no scores.
 
+### Your weekly meeting times
+
+**My space → Set my availability** opens a When2meet-style week. Drag a rectangle across days and times, tap individual cells, or use the arrow keys and Space to select 30-minute blocks. All 24 hours are available; on phones, scroll with the Time column. Choose the schedule's time zone; the selected clock times repeat every week and follow daylight-saving changes in that zone.
+
+Turn on **Only suggest plans during my selected times** to filter suggestions. Mochii searches the next eight days for a shared window that fits the entire activity, tries other activities or friends when needed, and makes no suggestion if there is no overlap. Stranger plans still stay in daytime. An enabled empty week pauses new suggestions; turning the filter off restores flexible scheduling and keeps the saved selection. Existing accounts start without a filter.
+
+The weekly schedule is private to the account. Saving it removes conflicting pending suggestions but leaves confirmed plans as agreed. Settings persist on the server and sync across the account's open sessions. `POST /api/availability` accepts `{ enabled, timeZone, days }`, where `days` contains seven arrays of selected half-hour indices (`0`–`47`), Monday first.
+
 ### Stranger mode: meeting someone new
 
 For people who don't have a group yet, or want new faces. People without a group are offered it once, as a yes/no card. It's always in **My space**.
