@@ -69,10 +69,26 @@ const MOODS = [
 ];
 const moodInfo = (id) => MOODS.find((m) => m.id === id);
 
+// Pixel-art drawings for activities, keyed by the emoji the server sends with cards, plans and map pins.
+const ACTIVITY_ART = {
+  '☕': 'coffee', '🚶': 'walk', '🍝': 'cooking', '🏋': 'gym', '🛒': 'groceries',
+  '🧖': 'sauna', '🏊': 'swimming', '🎬': 'movie', '📚': 'study', '🎲': 'games',
+};
+
+function pixelIcon(src, className = '') {
+  return h('img', { src, class: `pixel-icon ${className}`.trim(), alt: '', draggable: 'false' });
+}
+
+/** The drawing for an activity emoji; any other emoji stays as text. */
+function emojiArt(emoji) {
+  const name = typeof emoji === 'string' ? ACTIVITY_ART[emoji.replace(/️/g, '')] : null;
+  return name ? pixelIcon(`/icons/activities/${name}.png`, 'activity-art') : emoji;
+}
+
 function weatherCat(mood, className = '', name = '') {
   const weather = moodInfo(mood);
   return h('img', {
-    src: weather ? `/icons/moods/${weather.id}.svg` : '/icons/cat.svg',
+    src: weather ? `/icons/moods/${weather.id}.png` : '/icons/cat.png',
     class: `cat-art weather-cat ${className} weather-${weather?.id || 'neutral'}`,
     alt: name ? `${name}${weather ? ` · ${weather.name}, ${weather.feeling.toLowerCase()}` : ''}` : '',
     draggable: 'false',
@@ -80,12 +96,12 @@ function weatherCat(mood, className = '', name = '') {
 }
 
 function catImage(className = '', alt = '') {
-  return h('img', { src: '/icons/cat.svg', class: `cat-art ${className}`, alt, draggable: 'false' });
+  return h('img', { src: '/icons/cat.png', class: `cat-art ${className}`, alt, draggable: 'false' });
 }
 
 function brand() {
   return h('div', { class: 'brand' },
-    h('img', { src: '/icons/icon.svg', alt: '', width: '42', height: '42' }),
+    h('img', { src: '/icons/icon-192.png', alt: '', width: '42', height: '42' }),
     h('div', { class: 'brand-copy' }, h('strong', {}, 'Mochii'), h('span', {}, 'a little closer, together.')),
   );
 }
@@ -500,7 +516,8 @@ function renderWelcome() {
 function renderMoodButton() {
   const weather = moodInfo(state.me.mood);
   shell.mood.setAttribute('aria-label', weather ? `Mood: ${weather.name}, ${weather.feeling.toLowerCase()}. Change your weather` : 'Mood: choose your weather');
-  shell.mood.replaceChildren(h('span', { class: 'mood-fab-icon', 'aria-hidden': 'true' }, weather?.emoji || '🐾'), h('span', {}, 'MOOD'));
+  shell.mood.replaceChildren(h('span', { class: 'mood-fab-icon', 'aria-hidden': 'true' },
+    pixelIcon(weather ? `/icons/weather/${weather.id}.png` : '/icons/mood-neutral.png')), h('span', {}, 'MOOD'));
 }
 
 function openMood() {
@@ -564,13 +581,13 @@ function openMood() {
 function renderNavigation() {
   shell.nav.replaceChildren(
     ...[
-      ['map', '🗺️', 'Explore', () => selectHomeView('map')],
-      ['plans', '☕', 'Our plans', () => selectHomeView('plans')],
-      ['space', '🐾', 'My space', openMenu],
-    ].map(([id, emoji, label, action]) => h('button', {
+      ['map', 'nav-explore', 'Explore', () => selectHomeView('map')],
+      ['plans', 'nav-plans', 'Our plans', () => selectHomeView('plans')],
+      ['space', 'nav-space', 'My space', openMenu],
+    ].map(([id, icon, label, action]) => h('button', {
       class: `nav-btn${homeView === id ? ' active' : ''}`,
       'aria-current': homeView === id ? 'page' : null, onclick: action,
-    }, h('span', { class: 'nav-icon', 'aria-hidden': 'true' }, emoji), h('span', {}, label),
+    }, h('span', { class: 'nav-icon', 'aria-hidden': 'true' }, pixelIcon(`/icons/navigation/${icon}.png`)), h('span', {}, label),
     id === 'plans' && state.plans?.length ? h('span', { class: 'nav-count' }, state.plans.length) : null)),
   );
 }
@@ -634,10 +651,10 @@ function cardView(c) {
   const serious = ['survey', 'support', 'care'].includes(c.kind);
   const el = h('article', { class: `card${serious ? ' steady' : ''}`, 'aria-label': c.title });
   const lines = (c.lines || []).map((l) => {
-    if (l.when) return h('li', {}, h('span', { class: 'i' }, l.icon || '🕒'), fmtWhen(l.when));
-    if (l.map) return h('li', {}, h('span', { class: 'i' }, l.icon || '🗺️'), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
-    if (l.tel) return h('li', {}, h('span', { class: 'i' }, l.icon || '📞'), h('a', { class: 'map', href: `tel:${l.tel}` }, l.text));
-    return h('li', {}, h('span', { class: 'i' }, l.icon || '•'), l.text);
+    if (l.when) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '🕒')), fmtWhen(l.when));
+    if (l.map) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '🗺️')), h('a', { class: 'map', href: mapsUrl(l.map), target: '_blank', rel: 'noopener' }, 'Open in Maps'));
+    if (l.tel) return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '📞')), h('a', { class: 'map', href: `tel:${l.tel}` }, l.text));
+    return h('li', {}, h('span', { class: 'i' }, emojiArt(l.icon || '•')), l.text);
   });
   // Check-in questions keep their published answer options; everything else is yes or no.
   const answers = c.options
@@ -649,8 +666,8 @@ function cardView(c) {
   el.append(
     ...[
       h('div', { class: 'card-heading' },
-        h('div', { class: 'from' }, h('img', { src: '/icons/icon.svg', alt: '' }), c.progress || 'A little nudge from Mochii'),
-        c.emoji ? h('span', { class: 'activity-stamp', 'aria-hidden': 'true' }, c.emoji) : null,
+        h('div', { class: 'from' }, h('img', { src: '/icons/icon-192.png', alt: '' }), c.progress || 'A little nudge from Mochii'),
+        c.emoji ? h('span', { class: 'activity-stamp', 'aria-hidden': 'true' }, emojiArt(c.emoji)) : null,
       ),
       c.note ? h('p', { class: 'note' }, c.note) : null,
       h('h1', {}, c.title),
@@ -690,7 +707,7 @@ function renderPlans() {
   shell.plans.replaceChildren(
     ...plans.map((p) =>
       h('div', { class: 'plan' },
-        h('div', { class: 'e', 'aria-hidden': 'true' }, p.emoji),
+        h('div', { class: 'e', 'aria-hidden': 'true' }, emojiArt(p.emoji)),
         h('div', { class: 't' }, p.title),
         h('div', { class: 's' }, `${fmtWhen(p.startAt)} · ${p.place.name}`),
         h('div', { class: 'chips' },
@@ -871,7 +888,7 @@ function circle(lon, lat, metres) {
 }
 
 const pinEl = (emoji, mod) =>
-  h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emoji, mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
+  h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emojiArt(emoji), mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
 
 /** Spread cats sharing one coarse location in screen pixels, never by inventing GPS coordinates. */
 function catOffsets(friends) {
@@ -908,7 +925,7 @@ function updateMap() {
       key: `f:${f.id}:${f.kind}`, at: [f.lon, f.lat], sig: `${f.name}|${f.mood || ''}`, anchor: 'bottom', offset: offsets.get(f.id),
       el: () => h('div', { class: `mk-friend ${f.kind}` }, h('span', { class: 'av' }, weatherCat(f.mood, '', f.name), h('span', { class: 'avatar-initial' }, initial(f.name))), h('span', { class: 'nm' }, f.kind === 'live' ? `${f.name} · on the way` : f.name)),
       pop: () => h('div', { class: 'pop' }, h('b', {}, f.name),
-        weather ? h('span', { class: 'mood-chip' }, `${weather.emoji} ${weather.name} · ${weather.feeling}`) : null,
+        weather ? h('span', { class: 'mood-chip' }, pixelIcon(`/icons/weather/${weather.id}.png`), `${weather.name} · ${weather.feeling}`) : null,
         f.kind === 'live' ? `On the way to meet you 🚶` : 'Somewhere around here. Only a rough area, never the exact spot.'),
     });
   }
@@ -1334,7 +1351,7 @@ function renderAuth() {
     h('span', { class: 'story-pill' }, 'LESS SCROLLING. MORE LIVING.'),
     h('h1', {}, 'Social media that is ', h('em', {}, 'actually social.')),
     h('p', { class: 'story-copy' }, 'A coffee. A walk. A familiar face. Mochii turns the little “we should” moments into time together.'),
-    h('img', { class: 'together-art', src: '/icons/together.svg', alt: 'Two cozy cats sharing a coffee in the park', width: '600', height: '360' }),
+    h('img', { class: 'together-art', src: '/icons/together.png', alt: 'Two cozy cats sharing a coffee in the park', width: '600', height: '360' }),
     h('div', { class: 'story-tags' }, h('span', {}, '🐾 Your kind of company'), h('span', {}, '☕ Real little plans'), h('span', {}, '♡ At your own pace')),
   );
   $app.replaceChildren(
