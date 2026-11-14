@@ -109,6 +109,7 @@ export function createUser({ name, username, pass }) {
     samples: [],
     asked: { location: false, notify: false, host: false, survey: false, prefs: [], times: [] },
     caps: { push: false, geo: 'unknown' },
+    showArea: null, // friends see this person's rough area on the map: null = not asked yet
     surveysOn: null, // two-weekly check-in: null = not asked yet
     share: null, // check-ins shared with the care team: null = not asked yet
     survey: null, // the check-in in progress
@@ -141,7 +142,7 @@ export function removeUser(userId) {
   for (const k of Object.keys(db.pairs)) if (k.split('|').includes(userId)) delete db.pairs[k];
   delete db.users[userId];
   log(`${u.name} deleted their account`);
-  save();
+  changed(userId, ...Object.keys(db.users));
 }
 
 export function setCaps(userId, caps) {
@@ -156,18 +157,22 @@ export function setPause(userId, days) {
   if (!u) return;
   u.paused = days > 0 ? Date.now() + days * DAY : 0;
   for (const c of Object.values(db.cards)) {
-    if (c.userId === userId && c.status === 'open' && ['pref', 'time', 'host', 'care', 'survey', 'survey_consent', 'share_consent'].includes(c.kind)) c.status = 'expired';
+    if (c.userId === userId && c.status === 'open' && ['pref', 'time', 'host', 'care', 'survey', 'survey_consent', 'share_consent', 'area_consent'].includes(c.kind)) c.status = 'expired';
   }
   if (days > 0) u.survey = null;
   log(days > 0 ? `${u.name} paused Eden for ${days} days` : `${u.name} is back`);
-  changed(userId);
+  changed(...Object.keys(db.users)); // remove or restore their marker on open friends' maps immediately
 }
 
 export function updateLocation(userId, { lat, lon, acc }) {
   const u = db.users[userId];
-  if (!u || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (!u || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return;
   const now = Date.now();
+  const cellBefore = u.loc && now - u.loc.at < AREA_FRESH ? areaKey(u.loc) : null;
   u.loc = { lat, lon, acc: Number.isFinite(acc) ? acc : 50, at: now };
+  // Friends' maps only change when this person crosses into another ~1 km area, or moves while on their way to them.
+  if (u.showArea === true && areaKey(u.loc) !== cellBefore) changed(...Object.keys(db.users).filter((id) => id !== userId));
+  for (const p of activePlans(userId)) if (p.status === 'confirmed' && p.going[userId]) changed(otherOf(p, userId)?.id);
   const last = u.samples[u.samples.length - 1];
   if (!last || now - last.at > 10 * MIN || distance(last, u.loc) > 75) {
     u.samples.push({ lat, lon, at: now });
@@ -212,7 +217,7 @@ export function needsCompany(u) {
 
 const PRIORITY = {
   reminder: 0, proposal: 1, checkin: 2, felt: 3, care: 4, share_consent: 4.5, survey: 4.6,
-  perm_location: 5, perm_notify: 6, host: 7, survey_consent: 7.5, pref: 8, time: 8,
+  perm_location: 5, perm_notify: 6, host: 7, survey_consent: 7.5, area_consent: 7.6, pref: 8, time: 8,
 };
 // Plan questions: each one also reaches the phone as a notification with the card's own yes/no.
 const PUSHED = new Set(['proposal', 'reminder', 'checkin', 'felt']);
@@ -306,6 +311,7 @@ function nextQuestion(u, { onboardingOnly }) {
   if (onboardingOnly) return null;
   if (!u.asked.survey) return surveyConsentCard();
   if (u.surveys?.length && u.share == null) return shareCard();
+  if (u.loc && !u.asked.area) return areaCard();
   const pref = ACTIVITIES.find((a) => !u.asked.prefs.includes(a.id));
   if (pref) return prefCard(pref.id);
   const slot = Object.keys(TIME_QUESTIONS).find((s) => !u.asked.times.includes(s));
@@ -316,6 +322,26 @@ function nextQuestion(u, { onboardingOnly }) {
 function prefCard(activityId) {
   const a = byId[activityId];
   return { kind: 'pref', activityId, emoji: a.emoji, title: a.ask, lines: [], yes: 'Yes', no: 'Not really' };
+}
+
+function areaCard() {
+  return {
+    kind: 'area_consent', emoji: '🗺️',
+    title: 'Show friends roughly where you are on the map?',
+    lines: [
+      { icon: '🔒', text: 'Only your neighbourhood (about 1 km), never your exact spot.' },
+      { icon: '🌙', text: "Only after you've opened Eden in the last few hours. You can hide any time from the menu (☰)." },
+    ],
+    yes: 'Yes', no: 'Keep me hidden',
+  };
+}
+
+export function setShowArea(userId, on) {
+  const u = db.users[userId];
+  if (!u) return;
+  u.showArea = !!on;
+  u.asked.area = true;
+  changed(...Object.keys(db.users)); // everyone's map changes
 }
 
 /* -------------------------------------------------------------------- check-ins */
@@ -648,6 +674,12 @@ export function answer(userId, cardId, yes, value) {
     case 'survey':
       onSurveyAnswer(u, c, value);
       break;
+    case 'area_consent':
+      u.asked.area = true;
+      u.showArea = !!yes;
+      toast(u.id, yes ? 'Friends now see your rough area on the map.' : "You're hidden on the map. Plans still show where you'll meet.");
+      changed(...Object.keys(db.users));
+      break;
   }
   changed(userId);
   setTimeout(() => void tick(), 400);
@@ -792,6 +824,7 @@ function sendReminders(plan) {
         { icon: '🕒', when: plan.startAt },
         { icon: '📍', text: placeLine(plan, me, other) },
         ...(showMap ? [{ icon: '🗺️', map: { lat: plan.place.lat, lon: plan.place.lon, name: plan.place.name, search: plan.place.search } }] : []),
+        ...(showMap ? [{ icon: '👀', text: `"On my way" lets ${other.name} see you on the map until you meet.` }] : []),
       ],
       yes: plan.place.home && plan.hostId === id ? 'Yes' : 'On my way',
       no: "Can't today",
@@ -908,6 +941,40 @@ export function setDemo(on) {
   start();
 }
 
+/* ------------------------------------------------------------------------ map */
+
+// Friends only ever see which ~1 km cell someone is in (around 60°N), never the spot, and only if they said yes.
+const AREA = { lat: 0.01, lon: 0.02 };
+const AREA_FRESH = 3 * HOUR; // after that they just aren't shown: no "last seen"
+const areaKey = (p) => `${Math.floor(p.lat / AREA.lat)}:${Math.floor(p.lon / AREA.lon)}`;
+const centre = (v, step) => Number(((Math.floor(v / step) + 0.5) * step).toFixed(4));
+const areaOf = (p) => ({ lat: centre(p.lat, AREA.lat), lon: centre(p.lon, AREA.lon) });
+
+/** A plan where `v` tapped "On my way" to meet `u` and hasn't arrived yet: the only time `u` sees `v`'s real position. */
+function onTheWay(u, v, now) {
+  return Object.values(db.plans).find(
+    (p) => p.status === 'confirmed' && p.userIds.includes(u.id) && p.userIds.includes(v.id) && p.going[v.id] && !p.together && now <= p.endAt
+      && !(p.place.home && p.hostId === v.id) && now - v.loc.at < 10 * MIN,
+  );
+}
+
+function mapFor(u, now) {
+  const friends = [];
+  for (const v of Object.values(db.users)) {
+    if (v.id === u.id || !v.loc || v.paused > now) continue;
+    const plan = onTheWay(u, v, now);
+    if (plan) friends.push({ id: v.id, name: v.name, kind: 'live', lat: v.loc.lat, lon: v.loc.lon, planId: plan.id });
+    else if (v.showArea === true && now - v.loc.at < AREA_FRESH) friends.push({ id: v.id, name: v.name, kind: 'area', ...areaOf(v.loc), radius: 800 });
+  }
+  // The place of a suggestion that's waiting for an answer (never someone's home before both said yes).
+  const card = openCards(u.id)[0];
+  const plan = card?.kind === 'proposal' ? db.plans[card.planId] : null;
+  const pin = plan && !plan.place.home && plan.place.found
+    ? { lat: plan.place.lat, lon: plan.place.lon, name: plan.place.name, emoji: byId[plan.activityId].emoji }
+    : null;
+  return { me: u.loc ? { lat: u.loc.lat, lon: u.loc.lon } : null, showArea: u.showArea ?? null, friends, pin };
+}
+
 /* ------------------------------------------------------------- what phones see */
 
 export function stateFor(userId) {
@@ -946,6 +1013,7 @@ export function stateFor(userId) {
     card: cards[0] ? publicCard(cards[0]) : null,
     waiting: cards.filter((c) => PUSHED.has(c.kind)).map((c) => c.id), // plan questions with a notification out
     plans,
+    map: mapFor(u, now),
     toasts: (u.toasts || []).filter((t) => now - t.at < 90e3),
     people: Object.keys(db.users).length,
     demo: config.demo,
@@ -978,6 +1046,7 @@ export function adminState() {
     push: !!u.push,
     canHost: u.canHost,
     checkins: { on: u.surveysOn ?? null, share: u.share ?? null, count: u.surveys?.length ?? 0, inProgress: !!u.survey },
+    showArea: u.showArea === true,
     openCard: openCards(u.id)[0]?.title ?? null,
     likes: ACTIVITIES.map((a) => ({ id: a.id, emoji: a.emoji, name: a.name, p: mean(beta(u.prefs, a.id)), n: Math.round(beta(u.prefs, a.id).a + beta(u.prefs, a.id).b - 2) }))
       .sort((x, y) => y.p - x.p),

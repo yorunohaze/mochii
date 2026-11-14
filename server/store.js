@@ -2,7 +2,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const DATA_DIR = path.resolve(import.meta.dirname, '..', 'data');
+export const DATA_DIR = process.env.EDEN_DATA_DIR
+  ? path.resolve(process.env.EDEN_DATA_DIR)
+  : path.resolve(import.meta.dirname, '..', 'data');
 const FILE = path.join(DATA_DIR, 'db.json');
 
 const empty = () => ({ users: {}, sessions: {}, cards: {}, plans: {}, pairs: {}, log: [] });

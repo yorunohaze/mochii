@@ -136,6 +136,7 @@
                     u.hasLocation ? h('span', { class: 'chip good' }, `📍 ${Math.round(u.locationAge / 60000)} min ago`) : h('span', { class: 'chip' }, '📍 no GPS yet'),
                     u.push ? h('span', { class: 'chip good' }, '🔔 push') : null,
                     u.canHost ? h('span', { class: 'chip' }, '🏠 can host') : null,
+                    u.showArea ? h('span', { class: 'chip' }, '🗺️ rough area shown') : null,
                     u.needsCompany ? h('span', { class: 'chip warm' }, 'quieter stretch') : null,
                     u.paused ? h('span', { class: 'chip' }, 'on a break') : null,
                     u.checkins.on ? h('span', { class: 'chip good' }, `📋 ${u.checkins.count} check-in${u.checkins.count === 1 ? '' : 's'}${u.checkins.inProgress ? ' · one in progress' : ''}${u.checkins.share ? ' · shared' : ''}`) : null,

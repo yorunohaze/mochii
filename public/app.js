@@ -78,6 +78,7 @@ function mapsUrl({ lat, lon, name, search }) {
 /* ------------------------------------------------------------------- boot */
 
 async function boot() {
+  void loadMapLibrary();
   await registerServiceWorker();
   const r = await api('/api/state');
   if (r.ok && r.data) {
@@ -121,7 +122,11 @@ async function reportCapabilities() {
 function connect() {
   stream?.close();
   stream = new EventSource('/api/stream');
-  stream.addEventListener('state', (e) => setState(JSON.parse(e.data)));
+  stream.addEventListener('state', (e) => {
+    const next = JSON.parse(e.data);
+    if (next) setState(next);
+    else signedOut();
+  });
   stream.onerror = async () => {
     const r = await api('/api/state');
     if (r.status === 401) signedOut();
@@ -164,6 +169,8 @@ document.addEventListener('visibilitychange', async () => {
 function postPosition(pos) {
   const { latitude: lat, longitude: lon, accuracy: acc } = pos.coords;
   const now = Date.now();
+  myPos = { lat, lon };
+  updateMap();
   if (lastSent && now - lastSent.t < 15000) {
     const dLat = (lat - lastSent.lat) * 111e3;
     const dLon = (lon - lastSent.lon) * 111e3 * Math.cos((lat * Math.PI) / 180);
@@ -258,18 +265,31 @@ async function clearNudges(shouldClose) {
 function render() {
   if (!state) return renderAuth();
   if (!shell) {
+    // Home: a full-screen map, with Eden's card in a sheet over it (swipe it down to see the map).
     shell = {
+      map: h('div', { class: 'map-view', role: 'region', 'aria-label': 'Map of your plans and friends nearby' }),
       top: h('header', { class: 'top' }),
+      peek: h('span', { class: 'peek' }),
+      mapNotice: h('div', { class: 'map-notice', hidden: true, role: 'status' }),
       stage: h('section', { class: 'stage', 'aria-live': 'polite' }),
       label: h('p', { class: 'section-label' }),
       plans: h('div', { class: 'plans' }),
     };
-    $app.replaceChildren(shell.top, shell.stage, shell.label, shell.plans);
+    shell.head = h('button', { class: 'sheet-head', type: 'button', 'aria-controls': 'home-sheet-body', 'aria-label': 'Show or hide the card' }, h('span', { class: 'grab' }), shell.peek);
+    shell.body = h('div', { class: 'sheet-body', id: 'home-sheet-body' }, shell.mapNotice, shell.stage, shell.label, shell.plans);
+    shell.sheet = h('section', { class: 'home-sheet' }, shell.head, shell.body);
+    $app.replaceChildren(shell.map, shell.top, shell.sheet);
+    document.body.classList.add('home');
+    setupSheet();
     stageKey = '';
   }
+  ensureMap();
   renderTop();
   renderStage();
   renderPlans();
+  renderPeek();
+  renderMapNotice();
+  updateMap();
   showToasts();
   document.title = state.card ? '(1) Eden' : 'Eden';
 }
@@ -277,8 +297,20 @@ function render() {
 function renderTop() {
   shell.top.replaceChildren(
     h('div', { class: 'brand' }, h('img', { src: '/icons/icon.svg', alt: '' }), 'Eden'),
-    h('button', { class: 'icon-btn', 'aria-label': 'Menu', onclick: openMenu }, '☰'),
+    h('div', { class: 'top-actions' },
+      map ? h('button', { class: 'icon-btn', 'aria-label': 'Show everything on the map', onclick: () => frameMap(true) }, '◎') : null,
+      h('button', { class: 'icon-btn', 'aria-label': 'Menu', onclick: openMenu }, '☰'),
+    ),
   );
+}
+
+/** What the folded-down sheet says, so the map can take the whole screen without hiding anything. */
+function renderPeek() {
+  const c = state.card;
+  const next = (state.plans || [])[0];
+  if (c) shell.peek.textContent = c.progress || `Eden asks: ${c.title}`;
+  else if (next) shell.peek.textContent = `Coming up: ${next.title} · ${fmtWhen(next.startAt)}`;
+  else shell.peek.textContent = state.me.paused ? 'Eden is giving you some space 🌙' : 'Nothing to decide right now 🌿';
 }
 
 function renderStage() {
@@ -287,6 +319,7 @@ function renderStage() {
   const key = c ? `card:${c.id}` : paused ? 'paused' : `empty:${state.people > 1}`;
   if (key === stageKey) return;
   stageKey = key;
+  setSheetOpen(!!c); // a question rises up; with nothing to decide, the map gets the screen
   if (c) return shell.stage.replaceChildren(cardView(c));
   if (paused) {
     return shell.stage.replaceChildren(
@@ -374,7 +407,255 @@ function renderPlans() {
   );
 }
 
-setInterval(() => state && shell && renderPlans(), 30000);
+setInterval(() => state && shell && (renderPlans(), renderPeek()), 30000);
+
+/* -------------------------------------------------------------------- sheet */
+
+let sheetOpen = true;
+
+function setSheetOpen(open) {
+  sheetOpen = open;
+  shell?.sheet.classList.toggle('collapsed', !open);
+  if (!shell) return;
+  shell.head.setAttribute('aria-expanded', String(open));
+  if (!open && map && shell.body.contains(document.activeElement)) shell.head.focus();
+  shell.body.inert = !!map && !open;
+}
+
+/** Drag the sheet's handle up or down (or tap it) to fold Eden's card away and see the map. */
+function setupSheet() {
+  const { sheet, head } = shell;
+  let drag = null;
+  let dragged = false;
+  head.addEventListener('pointerdown', (e) => {
+    if (!map || e.button !== 0) return;
+    dragged = false;
+    drag = { y: e.clientY, open: sheetOpen, range: sheet.offsetHeight - head.offsetHeight };
+    head.setPointerCapture(e.pointerId);
+    sheet.classList.add('dragging');
+  });
+  head.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const y = Math.max(0, Math.min(drag.range, (drag.open ? 0 : drag.range) + e.clientY - drag.y));
+    sheet.style.transform = `translateY(${y}px)`;
+  });
+  const done = (e, cancelled) => {
+    if (!drag) return;
+    const dy = e.clientY - drag.y;
+    const { open } = drag;
+    drag = null;
+    sheet.classList.remove('dragging');
+    sheet.style.transform = '';
+    dragged = cancelled || Math.abs(dy) >= 8;
+    if (dragged) setSheetOpen(cancelled ? open : dy < 0);
+  };
+  head.addEventListener('pointerup', (e) => done(e, false));
+  head.addEventListener('pointercancel', (e) => done(e, true));
+  head.addEventListener('click', (e) => {
+    if (!dragged || e.detail === 0) setSheetOpen(!sheetOpen);
+    dragged = false;
+  });
+  // Reframe after the sheet changes height or the phone rotates, so pins stay above it.
+  shell.resize = new ResizeObserver(() => map && frameMap(false));
+  shell.resize.observe(sheet);
+  sheet.addEventListener('transitionend', (e) => {
+    if (e.target === sheet && e.propertyName === 'transform') frameMap(true);
+  });
+}
+
+/* ---------------------------------------------------------------------- map */
+
+// MapLibre + OpenFreeMap: free vector maps, no API key. Friends only appear as a rough ~1 km area if they chose
+// to, or live while they're on their way to meet you; the server never sends anything more precise.
+const MAP_STYLE = `https://tiles.openfreemap.org/styles/${matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'liberty'}`;
+let ml = null; // the MapLibre module, loaded in the background
+let map = null;
+let myPos = null;
+let framedKeys = ''; // what was on the map the last time it was fitted to the screen
+let areasReady = false; // the rough-area layer exists once the map style has loaded
+let mapUnavailable = false;
+let mapLoadTimer = null;
+const markers = new Map(); // key -> { marker, sig }
+
+async function loadMapLibrary() {
+  try {
+    ml = await import('/vendor/maplibre-gl/maplibre-gl.mjs');
+    ml.setWorkerUrl('/vendor/maplibre-gl/maplibre-gl-worker.mjs');
+  } catch {
+    ml = null; // no map: Eden works exactly as before
+    mapUnavailable = true;
+  }
+  if (state && shell) render();
+}
+
+function ensureMap() {
+  if (!ml || !shell || map || mapUnavailable) return;
+  document.body.classList.add('has-map'); // the map needs its full-screen size before it starts
+  try {
+    map = new ml.Map({ container: shell.map, style: MAP_STYLE, center: [24.94, 60.17], zoom: 11, attributionControl: false });
+  } catch {
+    mapFallback(); // e.g. no WebGL on this device
+    return;
+  }
+  const instance = map;
+  // A blocked style, unavailable GPU or stalled network must not leave a blank map forever.
+  mapLoadTimer = setTimeout(() => map === instance && mapFallback(), 15000);
+  map.on('error', () => {
+    if (map === instance && !areasReady && !map.getStyle()) mapFallback();
+  });
+  map.on('resize', () => frameMap(false));
+  map.addControl(new ml.AttributionControl({ compact: true }), 'top-right');
+  map.on('load', () => {
+    if (map !== instance) return;
+    clearTimeout(mapLoadTimer);
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3e6b55';
+    map.addSource('areas', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addLayer({ id: 'areas-fill', type: 'fill', source: 'areas', paint: { 'fill-color': accent, 'fill-opacity': 0.16 } });
+    map.addLayer({ id: 'areas-line', type: 'line', source: 'areas', paint: { 'line-color': accent, 'line-opacity': 0.55, 'line-width': 1.5 } });
+    areasReady = true;
+    updateMap();
+  });
+  setSheetOpen(!!state.card);
+}
+
+function renderMapNotice() {
+  if (!shell) return;
+  shell.mapNotice.hidden = !mapUnavailable;
+  if (!mapUnavailable) return;
+  shell.mapNotice.replaceChildren(
+    h('span', {}, 'The map is unavailable. Your questions and plans are still here.'),
+    h('button', { class: 'btn quiet', type: 'button', onclick: async () => {
+      mapUnavailable = false;
+      if (!ml) await loadMapLibrary();
+      if (state && shell) render();
+    } }, 'Try map again'),
+  );
+}
+
+function mapFallback() {
+  mapUnavailable = true;
+  removeMap({ keepPosition: true });
+  shell?.map.replaceChildren();
+  setSheetOpen(true);
+  if (shell && state) {
+    renderTop();
+    renderMapNotice();
+  }
+}
+
+function removeMap({ keepPosition = false } = {}) {
+  clearTimeout(mapLoadTimer);
+  markers.clear();
+  map?.remove();
+  map = null;
+  framedKeys = '';
+  areasReady = false;
+  if (!keepPosition) myPos = null;
+  document.body.classList.remove('has-map');
+}
+
+const initial = (name) => (name || '?').trim().charAt(0).toUpperCase();
+
+/** A rough area as a circle polygon, so it scales with the map like a real ~1 km zone. */
+function circle(lon, lat, metres) {
+  const ring = [];
+  for (let i = 0; i <= 48; i++) {
+    const a = (i / 48) * 2 * Math.PI;
+    ring.push([lon + (metres * Math.cos(a)) / (111320 * Math.cos((lat * Math.PI) / 180)), lat + (metres * Math.sin(a)) / 110540]);
+  }
+  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } };
+}
+
+const pinEl = (emoji, mod) =>
+  h('div', { class: `mk-pin ${mod}` }, h('div', { class: 'bubble' }, emoji, mod === 'together' ? h('i', { class: 'spark' }, '✨') : null), h('div', { class: 'tail' }));
+
+function updateMap() {
+  if (!map || !state) return;
+  const m = state.map || {};
+  const items = [];
+  const me = myPos ?? m.me;
+  if (me) items.push({ key: 'me', at: [me.lon, me.lat], sig: 'me', anchor: 'center', el: () => h('div', { class: 'mk-me', title: 'You' }) });
+  for (const f of m.friends || []) {
+    items.push({
+      key: `f:${f.id}:${f.kind}`, at: [f.lon, f.lat], sig: f.name, anchor: 'center',
+      el: () => h('div', { class: `mk-friend ${f.kind}` }, h('span', { class: 'av' }, initial(f.name)), h('span', { class: 'nm' }, f.kind === 'live' ? `${f.name} · on the way` : f.name)),
+      pop: () => h('div', { class: 'pop' }, h('b', {}, f.name),
+        f.kind === 'live' ? `On the way to meet you 🚶` : 'Somewhere around here. Only a rough area, never the exact spot.'),
+    });
+  }
+  for (const p of state.plans || []) {
+    if (p.place.lat == null) continue;
+    items.push({
+      key: `p:${p.id}`, at: [p.place.lon, p.place.lat], sig: `${p.emoji}|${p.together}|${p.title}`, anchor: 'bottom',
+      el: () => pinEl(p.emoji, p.together ? 'together' : 'plan'),
+      pop: () => h('div', { class: 'pop' }, h('b', {}, p.title), `${fmtWhen(p.startAt)} · ${p.place.name}`,
+        p.together ? h('span', { class: 'chip warm' }, 'Together now ✨') : null,
+        p.place.map ? h('a', { href: mapsUrl(p.place), target: '_blank', rel: 'noopener' }, 'Open in Maps') : null),
+    });
+  }
+  if (m.pin) {
+    items.push({
+      key: 'pin', at: [m.pin.lon, m.pin.lat], sig: `${m.pin.name}|${m.pin.emoji}`, anchor: 'bottom',
+      el: () => pinEl(m.pin.emoji, 'suggested'),
+      pop: () => h('div', { class: 'pop' }, h('b', {}, m.pin.name), 'Suggested by Eden. Answer yes or no on the card.'),
+    });
+  }
+
+  const keep = new Set();
+  for (const it of items) {
+    keep.add(it.key);
+    const had = markers.get(it.key);
+    if (had?.sig === it.sig) {
+      had.marker.setLngLat(it.at);
+      continue;
+    }
+    had?.marker.remove();
+    const marker = new ml.Marker({ element: it.el(), anchor: it.anchor }).setLngLat(it.at);
+    if (it.pop) {
+      const popup = new ml.Popup({ offset: 28, closeButton: false, maxWidth: '240px' });
+      popup.on('open', () => popup.setDOMContent(it.pop())); // fresh "in 12 min" every time
+      marker.setPopup(popup);
+    }
+    markers.set(it.key, { marker: marker.addTo(map), sig: it.sig });
+  }
+  for (const [key, v] of markers) {
+    if (keep.has(key)) continue;
+    v.marker.remove();
+    markers.delete(key);
+  }
+  if (areasReady) {
+    const areas = (m.friends || []).filter((f) => f.kind === 'area').map((f) => circle(f.lon, f.lat, f.radius));
+    map.getSource('areas').setData({ type: 'FeatureCollection', features: areas });
+  }
+  // Something new on the map (a suggestion, a plan, a friend heading over)? Bring it into view.
+  const keys = items.map((it) => `${it.key}:${it.sig}`).sort().join(' ');
+  if (keys !== framedKeys) {
+    const first = !framedKeys;
+    framedKeys = keys;
+    requestAnimationFrame(() => frameMap(!first)); // after the sheet has its new height
+  }
+}
+
+/** Fit everything on screen in the part the sheet doesn't cover (also what ◎ does). */
+function frameMap(animate) {
+  if (!map || !shell) return;
+  const points = [...markers.values()].map((v) => v.marker.getLngLat());
+  if (!points.length) return;
+  const height = shell.map.clientHeight;
+  const width = shell.map.clientWidth;
+  if (!width || !height) return;
+  const covered = shell.sheet.classList.contains('collapsed')
+    ? shell.head.offsetHeight : shell.sheet.offsetHeight;
+  const padding = {
+    top: Math.min(90, height * 0.2), left: Math.min(40, width * 0.1), right: Math.min(40, width * 0.1),
+    bottom: Math.max(0, Math.min(covered + 24, height - Math.min(90, height * 0.2) - 70)),
+  };
+  const duration = animate ? 600 : 0;
+  if (points.length === 1) return map.easeTo({ center: points[0], zoom: 14, padding, duration });
+  const bounds = new ml.LngLatBounds(points[0], points[0]);
+  for (const p of points) bounds.extend(p);
+  map.fitBounds(bounds, { padding, maxZoom: 15, duration });
+}
 
 /* ------------------------------------------------------------------- toasts */
 
@@ -439,6 +720,18 @@ function openMenu() {
     h('h2', {}, `Hi, ${state.me.name}`),
     h('div', { class: 'row' }, h('b', {}, '📍 Location: '), geoOn ? 'on. Others only see roughly how far away you are.' : 'off. Eden can still suggest things, just less nearby.'),
     !geoOn ? h('button', { class: 'btn quiet', onclick: () => (askLocation(), close()) }, 'Turn location on') : null,
+    h('div', { class: 'row' }, h('b', {}, '🗺️ On the map: '),
+      state.map?.showArea ? 'friends see roughly where you are (about 1 km), never your exact spot.' : "hidden from friends. They only see where you'll meet for plans.",
+      ' When you tap "On my way", the friend you\'re meeting sees you until you arrive.',
+    ),
+    h('button', {
+      class: 'btn quiet',
+      onclick: async () => {
+        close();
+        const r = await api('/api/map', { showArea: !state.map?.showArea });
+        if (r.ok) setState(r.data);
+      },
+    }, state.map?.showArea ? 'Hide my rough area' : 'Show friends my rough area'),
     h('div', { class: 'row' }, h('b', {}, '🔔 Nudges: '), pushText),
     canTurnOn ? h('button', { class: 'btn quiet', onclick: turnOn }, 'Turn nudges on') : null,
     h('div', { class: 'row' }, h('b', {}, '📋 Check-ins: '), checkinText),
@@ -482,6 +775,10 @@ async function pause(days) {
 /* --------------------------------------------------------------------- auth */
 
 function renderAuth() {
+  shell?.resize?.disconnect();
+  removeMap();
+  lastSent = null;
+  document.body.classList.remove('home');
   shell = null;
   stageKey = '';
   const signup = authMode === 'signup';

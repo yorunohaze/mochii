@@ -19,6 +19,8 @@ engine.config.demo = process.argv.includes('--demo') || process.env.EDEN_DEMO ==
 const PORT = Number(process.env.PORT || 3000);
 const HTTPS_PORT = Number(process.env.HTTPS_PORT || 3443);
 const PUBLIC = path.resolve(import.meta.dirname, '..', 'public');
+// The map library is served straight from node_modules (pinned in package.json), so phones never need a CDN.
+const MAPLIBRE = path.resolve(import.meta.dirname, '..', 'node_modules', 'maplibre-gl', 'dist');
 
 const lanIps = () =>
   Object.values(os.networkInterfaces())
@@ -31,6 +33,7 @@ const lanIps = () =>
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.webmanifest': 'application/manifest+json',
@@ -113,7 +116,8 @@ function openStream(req, res, user) {
   res.write(`retry: 2000\nevent: state\ndata: ${JSON.stringify(engine.stateFor(user.id))}\n\n`);
   if (!streams.has(user.id)) streams.set(user.id, new Set());
   streams.get(user.id).add(res);
-  const ping = setInterval(() => res.write(': ping\n\n'), 25e3);
+  // Recompute time-sensitive visibility even when nobody taps or moves: stale positions disappear.
+  const ping = setInterval(() => res.write(`event: state\ndata: ${JSON.stringify(engine.stateFor(user.id))}\n\n`), 25e3);
   req.on('close', () => {
     clearInterval(ping);
     streams.get(user.id)?.delete(res);
@@ -211,6 +215,11 @@ async function api(req, res, url) {
       engine.setSurveys(user.id, { on: typeof on === 'boolean' ? on : null, share: typeof share === 'boolean' ? share : null, start: start === true });
       return json(res, 200, engine.stateFor(user.id));
     }
+    case 'POST /api/map': {
+      const { showArea } = await readJson(req);
+      if (typeof showArea === 'boolean') engine.setShowArea(user.id, showArea);
+      return json(res, 200, engine.stateFor(user.id));
+    }
     case 'POST /api/pause': {
       const { days } = await readJson(req);
       engine.setPause(user.id, Math.max(0, Math.min(30, Number(days) || 0)));
@@ -287,6 +296,13 @@ async function adminApi(req, res, url) {
 /* ------------------------------------------------------------------ static */
 
 function serveStatic(req, res, pathname) {
+  const vendor = pathname.match(/^\/vendor\/maplibre-gl\/(maplibre-gl(?:-worker)?\.mjs|maplibre-gl\.css)$/);
+  if (vendor) {
+    return fs.readFile(path.join(MAPLIBRE, vendor[1]), (err, data) => {
+      if (err) return send(res, 404, 'Not found');
+      send(res, 200, data, TYPES[path.extname(vendor[1])], { 'cache-control': 'public, max-age=86400' });
+    });
+  }
   if (pathname === '/admin' || pathname === '/clinician') {
     if (!isLocal(req)) return send(res, 403, 'This page only opens on the host computer.');
     pathname = `${pathname}.html`;

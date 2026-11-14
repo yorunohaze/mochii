@@ -20,6 +20,10 @@ Built for people recovering from depression, where reaching out is the hardest p
 
 No feeds, no chat, no streaks, no scores.
 
+**The home screen is a map**, like Snap Map. It shows you, your plans and where you'll meet, the place Eden is suggesting, and a ✨ when you're together. Eden's question sits in a sheet over the map: it rises when there's something to answer, and you can swipe it down to see the map. Friends appear only if they choose to, and only as a rough area (about 1 km), never their exact spot. The one exception: when someone taps **On my way** for a plan with you, you see them live until they arrive. The map is [MapLibre](https://maplibre.org) with free [OpenFreeMap](https://openfreemap.org) tiles: no API key, no account. If WebGL or map downloads fail, Eden shows the questions and plans with a **Try map again** button. The phone still needs a connection to the Eden host; this is not an offline app.
+
+Tap the sheet handle (or focus it and press Enter/Space) to show or hide the card. Hidden card controls stay out of keyboard navigation. The ◎ button brings all markers into view. Map credits remain available in the attribution control. **Hide my rough area** stops neighbourhood sharing; the separate **On my way** sharing ends when you meet, the plan ends, or you take a break. Open maps refresh every 25 seconds to drop stale positions, and update immediately when someone hides, pauses or deletes their account.
+
 ---
 
 ## Run it
@@ -75,11 +79,21 @@ Open the `https://….trycloudflare.com` address it prints. On iPhone (iOS 16.4+
 
 - Everything is stored in `data/` on the host's laptop. Nothing goes to a cloud service, with one optional exception: if the host sets `ANTHROPIC_API_KEY`, AI summaries send the check-in numbers of people who chose to share to Claude. Claude never gets a name, place, friend or date (details in [CHECKINS.md](CHECKINS.md)).
 - Check-ins are opt-in, and sharing them with a care team is a second, separate yes. Both can be changed any time in the menu (☰). The host's activity log never shows answers.
-- Other people only see **roughly how far away** you are ("about 1 km"), never where you are.
+- Other people only see **roughly how far away** you are ("about 1 km"), never where you are. On the map they see nothing at all unless you say yes, and then only which ~1 km area you're in, only if you've opened Eden in the last 3 hours (no "last seen"). The server never sends anything more precise. The exception is the friend you're meeting, after you tap "On my way", until you arrive.
+- Map tiles come from OpenFreeMap. Like any map app, loading them tells OpenFreeMap which area is on screen, but never a name or account.
 - For home activities (cooking, movie night, games), the guest gets directions only after the host has said yes to hosting and to that plan.
 - To find places, Eden sends only a rough area centre (about 2 km) to OpenStreetMap's public API, never a name or exact position. Results are cached for a day. Set `EDEN_PLACES=off` to turn this off. Eden then says "a café near you both" with a map search instead.
 - Anyone can delete their account from the menu (☰). The host can wipe everything from the dashboard.
 - Eden is not a medical device and doesn't diagnose.
+
+## Checks
+
+```bash
+npm run check
+npm test
+```
+
+On Windows PowerShell, use `npm.cmd` if script execution is blocked. The tests cover map visibility and consent, live sharing boundaries, immediate privacy updates, invalid coordinates, map loading failures and sheet accessibility. They use temporary data and do not touch your normal `data/` directory. For a separate demo or manual test server, set `EDEN_DATA_DIR` to a different directory before starting Eden.
 
 ## Limits
 

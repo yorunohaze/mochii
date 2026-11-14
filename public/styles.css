@@ -164,6 +164,64 @@ a { color: var(--accent); }
 @keyframes rise { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
+/* ---------- home: a full-screen map with Eden's card in a sheet over it ---------- */
+body.home #app { max-width: none; padding: 0; display: block; gap: 0; }
+body.home .top { max-width: 480px; margin: 0 auto; padding: calc(env(safe-area-inset-top) + 12px) 16px 0; }
+.top-actions { display: flex; gap: 8px; }
+.home-sheet { max-width: 480px; margin: 0 auto; padding: 20px 16px calc(env(safe-area-inset-bottom) + 24px); }
+.sheet-body { display: flex; flex-direction: column; gap: 20px; }
+.sheet-head, .map-view { display: none; }
+
+body.home.has-map { overflow: hidden; }
+body.home.has-map .map-view { display: block; position: fixed; inset: 0; z-index: 0; background: var(--card-alt); }
+body.home.has-map .top { position: fixed; top: 0; left: 0; right: 0; z-index: 11; max-width: none; pointer-events: none; }
+body.home.has-map .top > * { pointer-events: auto; }
+body.home.has-map .brand { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; box-shadow: var(--shadow); }
+body.home.has-map .icon-btn { box-shadow: var(--shadow); }
+body.home.has-map .home-sheet {
+  --peek: calc(66px + env(safe-area-inset-bottom));
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; max-width: 520px; max-height: 82dvh; padding: 0;
+  display: flex; flex-direction: column; background: var(--bg); border-radius: 26px 26px 0 0;
+  box-shadow: 0 -14px 44px -20px rgba(0, 0, 0, 0.5); transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+body.home.has-map .home-sheet.collapsed { transform: translateY(calc(100% - var(--peek))); }
+body.home.has-map .home-sheet.dragging { transition: none; }
+body.home.has-map .sheet-head { display: block; flex: none; width: 100%; border: 0; border-radius: 26px 26px 0 0; background: transparent; padding: 10px 20px 14px; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sheet-head .grab { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 10px; }
+.sheet-head .peek { display: block; margin: 0; text-align: center; font-size: 15px; font-weight: 700; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.home.has-map .home-sheet:not(.collapsed) .peek { display: none; }
+body.home.has-map .sheet-body { overflow-y: auto; overscroll-behavior: contain; gap: 16px; padding: 0 16px calc(env(safe-area-inset-bottom) + 20px); }
+body.home.has-map .stage { flex: none; min-height: 0; }
+body.home.has-map .card { box-shadow: none; }
+body.home.has-map .calm { padding: 4px 8px 8px; }
+.maplibregl-ctrl-top-right { top: calc(env(safe-area-inset-top) + 64px); }
+.map-notice:not([hidden]) { padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; color: var(--muted); font-size: 15px; background: var(--card); }
+.map-notice .btn { margin-top: 8px; padding: 0; }
+
+/* ---------- map markers ---------- */
+.mk-me { width: 18px; height: 18px; border-radius: 50%; background: #2f80ed; border: 3px solid #fff; box-shadow: 0 0 0 7px rgba(47, 128, 237, 0.22); }
+.mk-friend { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.mk-friend .av {
+  width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 18px;
+  background: var(--card); color: var(--accent); border: 3px solid var(--accent); box-shadow: var(--shadow);
+}
+.mk-friend.live .av { color: var(--warm); border-color: var(--warm); animation: breathe 2.4s ease-in-out infinite; }
+.mk-friend .nm { font-size: 12px; font-weight: 700; white-space: nowrap; background: var(--card); color: var(--text); padding: 2px 8px; border-radius: 999px; box-shadow: var(--shadow); }
+.mk-pin { display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.mk-pin .bubble {
+  position: relative; width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center; font-size: 22px;
+  background: var(--card); border: 3px solid var(--accent); box-shadow: var(--shadow);
+}
+.mk-pin .tail { width: 0; height: 0; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--accent); }
+.mk-pin.suggested .bubble { border-style: dashed; border-color: var(--warm); }
+.mk-pin.suggested .tail { border-top-color: var(--warm); }
+.mk-pin .spark { position: absolute; top: -8px; right: -8px; font-size: 18px; font-style: normal; }
+.maplibregl-popup-content { background: var(--card); color: var(--text); border-radius: 14px; padding: 10px 12px; box-shadow: var(--shadow); font-family: var(--font); }
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--card); }
+.maplibregl-popup-anchor-top .maplibregl-popup-tip { border-bottom-color: var(--card); }
+.pop { display: grid; gap: 4px; font-size: 14px; }
+.pop .chip { justify-self: start; }
+
 /* ---------- toasts ---------- */
 #toasts {
   position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 0; right: 0; z-index: 30;
