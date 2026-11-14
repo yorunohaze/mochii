@@ -71,6 +71,12 @@ test('mood API authenticates, streams to visible friends, and persists across re
     await bob.request('/api/mood', { mood: 'rainy' });
     assert.equal((await alice.request('/api/state')).data.map.friends.length, 0);
     await bob.request('/api/map', { showArea: true });
+    // On a shared server, sharing your area is still invisible to people outside your groups...
+    assert.equal((await alice.request('/api/state')).data.map.friends.length, 0);
+    // ...until you're in a group together: Alice starts one, Bob joins with her code.
+    const made = await alice.request('/api/groups', { name: 'Test crew' });
+    const code = made.data.groups.find((g) => g.id === made.data.groupId).code;
+    assert.equal((await bob.request('/api/groups/join', { code: code.toLowerCase().replace('-', ' ') })).status, 200);
 
     streamAbort = new AbortController();
     const res = await fetch(base + '/api/stream', { headers: { cookie: alice.cookie }, signal: streamAbort.signal });

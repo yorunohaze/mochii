@@ -42,15 +42,32 @@
     <div class="wrap">
       <header>
         <h1><img src="/icons/icon.svg" alt="" /> Mochii · care team view</h1>
-        <a href="/admin">Host dashboard</a>
+        <a href="/">Back to Mochii</a>
       </header>
+      <section class="panel" id="denied" hidden>
+        <h2>For clinician accounts</h2>
+        <p class="muted" id="denied-note"></p>
+        <p><a href="/">Open Mochii and log in</a>, then come back to this page.</p>
+      </section>
+      <div id="view" hidden>
       <p class="muted">
-        People who chose to share their check-ins, compared only with their own earlier answers. A quick look between visits to see
-        who might need a call. It is not a diagnosis.
+        Patients in your care teams who chose to share their check-ins, compared only with their own earlier answers. A quick look
+        between visits to see who might need a call. It is not a diagnosis.
       </p>
-      <p class="muted" id="ai-off" hidden>AI summaries are off. Set <code>ANTHROPIC_API_KEY</code> on this computer and restart Mochii to turn them on.</p>
+      <section class="panel">
+        <h2>Your care teams</h2>
+        <p class="muted">Give patients your team's code. They join it from <b>Your people → Got a code?</b> in Mochii, or with the link. Joining shares nothing by itself: each patient is asked separately, and can stop any time. Patients never see each other.</p>
+        <div id="teams"></div>
+        <form class="bar" id="new-team" style="margin-top:10px">
+          <input id="team-name" maxlength="40" placeholder="e.g. Otaniemi TMS clinic" aria-label="Care team name" style="min-width:240px;padding:8px 12px;border-radius:999px;border:1px solid var(--line)" />
+          <button class="primary" type="submit">Start a care team</button>
+        </form>
+        <p class="muted" id="team-error" role="alert"></p>
+      </section>
+      <p class="muted" id="ai-off" hidden>AI summaries are off. The server operator can set <code>ANTHROPIC_API_KEY</code> to turn them on.</p>
       <div id="people"></div>
       <p class="muted" id="others"></p>
+      </div>
 
       <section class="panel">
         <h2>About these measures</h2>
@@ -176,22 +193,44 @@
         if (!s) return;
         last = s;
         $('ai-off').hidden = s.aiReady;
+        $('teams').replaceChildren(...(s.teams.length
+          ? s.teams.map((t) => h('div', { class: 'panel', style: 'margin:8px 0' },
+              h('b', {}, t.name), ' ',
+              h('span', { class: 'muted' }, `· ${t.patients} patient${t.patients === 1 ? '' : 's'} · clinicians: ${t.staff.join(', ')}`),
+              h('div', { style: 'margin-top:6px' }, 'Code ', h('code', { style: 'font-size:18px;letter-spacing:2px' }, t.code), ' · link ', h('code', {}, `${location.origin}/join/${t.code}`))))
+          : [h('p', { class: 'muted' }, 'No care team yet. Start one below and give your patients its code.')]));
         $('people').replaceChildren(
           ...(s.people.length
             ? s.people.map((p) => person(p, s.aiReady))
-            : [h('section', { class: 'panel' }, h('p', { class: 'muted' }, 'Nobody has shared their check-ins yet. People are asked after their first check-in, and can change it in their menu (☰).'))]),
+            : [h('section', { class: 'panel' }, h('p', { class: 'muted' }, s.teams.length
+                ? 'No patient has shared their check-ins with you yet. They are asked after joining your team and doing a check-in, and can change it any time.'
+                : 'Patients appear here once they join one of your care teams and choose to share.'))]),
         );
-        $('others').textContent = s.notSharing ? `${s.notSharing} ${s.notSharing === 1 ? 'person uses' : 'people use'} Mochii without sharing. They don't appear here.` : '';
+        $('others').textContent = s.notSharing ? `${s.notSharing} ${s.notSharing === 1 ? 'patient in your teams doesn’t' : 'patients in your teams don’t'} share their check-ins. They don't appear here.` : '';
       }
 
       async function refresh() {
         try {
           const r = await fetch('/api/clinician/state');
-          if (r.ok) render(await r.json());
+          const data = await r.json().catch(() => ({}));
+          $('view').hidden = !r.ok;
+          $('denied').hidden = r.ok;
+          if (r.ok) return render(data);
+          $('denied-note').textContent = r.status === 401
+            ? 'You are not logged in to Mochii in this browser.'
+            : data.error || 'This page is for clinician accounts.';
         } catch {
           // server restarting
         }
       }
+
+      $('new-team').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const r = await fetch('/api/clinician/team', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('team-name').value }) });
+        const data = await r.json().catch(() => ({}));
+        $('team-error').textContent = r.ok ? '' : data.error || 'That did not work.';
+        if (r.ok) { $('team-name').value = ''; render(data); }
+      });
 
       refresh();
       setInterval(refresh, 10000);

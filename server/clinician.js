@@ -1,9 +1,11 @@
-// Care-team view: a quick look at how each person who chose to share has been doing, from their check-ins and how
+// Care-team view, for clinician accounts only: a quick look at how each patient in THEIR care teams who chose to
+// share has been doing, from their check-ins and how
 // often they've met up with people. Fixed rules decide who might need a call (every threshold is cited in
 // CHECKINS.md). Claude only writes the plain-language summary, from numbers with no name, place, partner or date.
 // Not a diagnosis.
 import Anthropic from '@anthropic-ai/sdk';
 
+import { groupsOf } from './circles.js';
 import { CUT, INSTRUMENTS, phq8Band } from './questionnaires.js';
 import { db } from './store.js';
 
@@ -97,9 +99,23 @@ function describe(u, a, now) {
 
 /* ------------------------------------------------------------------ overview */
 
-export function overview() {
+/** Care teams this clinician works in, and the patients in them (joined with the team's code). */
+function teamsOf(viewerId) {
+  return groupsOf(viewerId, 'care').filter((g) => g.members[viewerId]?.role === 'staff');
+}
+
+function patientsOf(viewerId) {
+  const ids = new Set();
+  for (const g of teamsOf(viewerId)) for (const [id, m] of Object.entries(g.members)) if (m.role === 'patient' && db.users[id]) ids.add(id);
+  return [...ids].map((id) => db.users[id]);
+}
+
+/** May this clinician see this person? Only a patient of one of their teams who said yes to sharing. */
+export const canSee = (viewerId, userId) => patientsOf(viewerId).some((u) => u.id === userId && u.share === true);
+
+export function overview(viewerId) {
   const now = Date.now();
-  const users = Object.values(db.users);
+  const users = patientsOf(viewerId);
   const shared = users.filter((u) => u.share === true);
   const people = shared
     .map((u) => {
@@ -119,7 +135,12 @@ export function overview() {
       };
     })
     .sort((x, y) => y.status.level - x.status.level || x.name.localeCompare(y.name));
-  return { people, notSharing: users.length - shared.length, aiReady: aiReady() };
+  const teams = teamsOf(viewerId).map((g) => ({
+    id: g.id, name: g.name, code: g.code,
+    patients: Object.values(g.members).filter((m) => m.role === 'patient').length,
+    staff: Object.entries(g.members).filter(([, m]) => m.role === 'staff').map(([id]) => db.users[id]?.name).filter(Boolean),
+  }));
+  return { people, notSharing: users.length - shared.length, aiReady: aiReady(), teams, me: db.users[viewerId]?.name ?? null };
 }
 
 /* ---------------------------------------------------------------- AI summary */
@@ -175,10 +196,10 @@ function withName(cached, name) {
   return { at: cached.at, model: cached.model, headline: named(r.headline), summary: named(r.summary), askAbout: r.askAbout.map(named) };
 }
 
-export async function aiSummary(userId) {
+export async function aiSummary(userId, viewerId) {
   const u = db.users[userId];
-  if (u?.share !== true) return { error: 'Only for people who chose to share their check-ins.' };
-  if (!aiReady()) return { error: 'Set ANTHROPIC_API_KEY on the host computer to turn on AI summaries.' };
+  if (!canSee(viewerId, userId)) return { error: 'Only for patients in your care teams who chose to share their check-ins.' };
+  if (!aiReady()) return { error: 'The server operator needs to set ANTHROPIC_API_KEY to turn on AI summaries.' };
   const payload = payloadFor(u, Date.now());
   const key = JSON.stringify(payload);
   try {

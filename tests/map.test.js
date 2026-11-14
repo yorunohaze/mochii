@@ -34,8 +34,12 @@ function plan(extra = {}) {
 }
 const friends = (id = 'Alice') => engine.stateFor(id).map.friends;
 
+// Alice, Bob and Cara are in one friend group; on a shared server that's what lets them see each other at all.
+const crew = () => ({ crew: { id: 'crew', name: 'Crew', kind: 'friends', code: 'CREW-2345', ownerId: 'Alice', createdAt: 0,
+  members: { Alice: { role: 'owner', at: 0 }, Bob: { role: 'member', at: 0 }, Cara: { role: 'member', at: 0 } } } });
+
 beforeEach(() => {
-  Object.assign(db, { users: { Alice: user('Alice'), Bob: user('Bob'), Cara: user('Cara') }, cards: {}, plans: {}, sessions: {}, pairs: {}, log: [] });
+  Object.assign(db, { users: { Alice: user('Alice'), Bob: user('Bob'), Cara: user('Cara') }, cards: {}, plans: {}, sessions: {}, pairs: {}, groups: crew(), reports: [], log: [] });
   events.length = 0;
 });
 after(async () => {

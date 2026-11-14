@@ -6,3 +6,6 @@ button { border-width: 2px; border-radius: 12px; min-height: 38px; }
 button.primary { background: var(--peach); border-color: var(--outline); color: var(--text); box-shadow: var(--shadow); }
 a { color: var(--accent); text-underline-offset: 3px; }
 :focus-visible { outline: 3px solid #40769e; outline-offset: 3px; }
+
+/* Author display rules (e.g. .wrap { display: grid }) must not override the hidden attribute. */
+[hidden] { display: none !important; }

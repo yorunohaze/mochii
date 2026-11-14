@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mochii host</title>
+    <title>Mochii operator</title>
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
     <style>
       * { box-sizing: border-box; }
@@ -41,9 +41,18 @@
     <link rel="stylesheet" href="/dashboard.css" />
   </head>
   <body>
-    <div class="wrap">
+    <form class="wrap" id="gate" hidden>
+      <h1><img src="/icons/icon.svg" alt="" /> Mochii · operator</h1>
+      <section class="panel">
+        <h2>Operator sign-in</h2>
+        <p class="muted" id="gate-note">Enter the operator token (EDEN_ADMIN_TOKEN) set on the server.</p>
+        <div class="bar"><input id="token" type="password" autocomplete="current-password" aria-label="Operator token" style="min-width:260px;padding:8px 12px;border-radius:999px;border:1px solid var(--line)" /><button class="primary" type="submit">Open dashboard</button></div>
+        <p class="muted" id="gate-error" role="alert"></p>
+      </section>
+    </form>
+    <div class="wrap" id="main" hidden>
       <header>
-        <h1><img src="/icons/icon.svg" alt="" /> Mochii · host dashboard</h1>
+        <h1><img src="/icons/icon.svg" alt="" /> Mochii · operator dashboard</h1>
         <div class="bar">
           <a href="/clinician">Care-team view</a>
           <label class="toggle"><input type="checkbox" id="demo" /> Demo rhythm (fast suggestions)</label>
@@ -54,10 +63,11 @@
 
       <div class="grid">
         <section class="panel">
-          <h2>Phones join here</h2>
-          <img class="qr" id="qr" alt="QR code for the phone address" />
+          <h2>People open</h2>
+          <img class="qr" id="qr" alt="QR code for the app address" />
           <div id="urls"></div>
-          <p class="muted">Same Wi-Fi as this computer. The first time, Safari says “This Connection Is Not Private”: tap <b>Show Details</b> → <b>visit this website</b>. It’s this laptop’s own certificate. HTTPS is what lets phones share GPS.</p>
+          <p class="muted" id="url-note"></p>
+          <p class="muted">Everyone signs up here, then starts a group or joins one with a code. People only ever see and get paired with people in their groups (or, in stranger mode, other adults who also opted in).</p>
         </section>
         <section class="panel">
           <h2>People <span class="muted" id="count"></span></h2>
@@ -75,6 +85,23 @@
           <tbody id="plans"></tbody>
         </table>
       </section>
+
+      <div class="grid">
+        <section class="panel">
+          <h2>Safety reports <span class="muted" id="report-count"></span></h2>
+          <table>
+            <thead><tr><th>When</th><th>Reported</th><th>By</th><th>Why</th><th></th></tr></thead>
+            <tbody id="reports"></tbody>
+          </table>
+        </section>
+        <section class="panel">
+          <h2>Groups <span class="muted" id="group-count"></span></h2>
+          <table>
+            <thead><tr><th>Group</th><th>Kind</th><th>People</th><th>Started by</th></tr></thead>
+            <tbody id="groups"></tbody>
+          </table>
+        </section>
+      </div>
 
       <section class="panel">
         <h2>What happened</h2>
@@ -104,7 +131,9 @@
 
       async function post(action, body = {}) {
         const r = await fetch(`/api/admin/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-        if (r.ok) render(await r.json());
+        const data = await r.json().catch(() => ({}));
+        if (r.ok) render(data);
+        else alert(data.error || 'That did not work.');
       }
 
       let lastUrl = '';
@@ -114,7 +143,28 @@
           lastUrl = s.urls[0];
           $('qr').src = `/api/admin/qr?u=${encodeURIComponent(s.urls[0])}`;
         }
-        $('urls').replaceChildren(...(s.urls.length ? s.urls.map((u) => h('p', {}, h('code', {}, u))) : [h('p', { class: 'muted' }, 'No Wi-Fi address found. Connect this computer to Wi-Fi.')]));
+        $('urls').replaceChildren(...(s.urls.length ? s.urls.map((u) => h('p', {}, h('code', {}, u))) : [h('p', { class: 'muted' }, 'No address found. Set PUBLIC_URL, or connect this computer to Wi-Fi.')]));
+        $('url-note').textContent = s.publicUrl
+          ? `Your public address. Invite links look like ${s.publicUrl}/join/K7Q2-M9XT.`
+          : 'Local test mode: same Wi-Fi as this computer. The first time, Safari says “This Connection Is Not Private” (a self-signed test certificate): tap Show Details → visit this website. For a real server, set PUBLIC_URL behind a proxy with proper HTTPS.';
+        $('reset').hidden = !s.demo;
+        $('report-count').textContent = `(${s.reports.filter((r) => r.status === 'open').length} open)`;
+        $('reports').replaceChildren(...(s.reports.length
+          ? s.reports.map((r) => h('tr', {},
+              h('td', {}, day(r.at)),
+              h('td', {}, h('b', {}, r.aboutName), r.aboutUsername ? h('div', { class: 'muted' }, `@${r.aboutUsername}`) : null),
+              h('td', {}, r.byName),
+              h('td', {}, r.reason || '—'),
+              h('td', {}, r.status === 'open' ? h('button', { onclick: () => post('resolve', { reportId: r.id }) }, 'Mark handled') : h('span', { class: 'chip good' }, 'handled'))))
+          : [h('tr', {}, h('td', { colspan: 5, class: 'muted' }, 'No reports. People are asked “Did you feel safe?” after every stranger-mode meet-up.'))]));
+        $('group-count').textContent = `(${s.groups.length})`;
+        $('groups').replaceChildren(...(s.groups.length
+          ? s.groups.map((g) => h('tr', {},
+              h('td', {}, g.name, g.fromStrangerMode ? h('div', { class: 'muted' }, 'met in stranger mode') : null),
+              h('td', {}, g.kind === 'care' ? h('span', { class: 'chip good' }, 'care team') : 'friends'),
+              h('td', {}, g.size),
+              h('td', {}, g.owner)))
+          : [h('tr', {}, h('td', { colspan: 4, class: 'muted' }, 'No groups yet.'))]));
         $('count').textContent = `(${s.users.length})`;
 
         $('people').replaceChildren(
@@ -129,6 +179,9 @@
                     u.showArea ? h('span', { class: 'chip' }, '🗺️ rough area shown') : null,
                     u.needsCompany ? h('span', { class: 'chip warm' }, 'quieter stretch') : null,
                     u.paused ? h('span', { class: 'chip' }, 'on a break') : null,
+                    h('span', { class: 'chip' }, `👥 ${u.groups} group${u.groups === 1 ? '' : 's'} · ${u.friends} ${u.friends === 1 ? 'person' : 'people'}`),
+                    u.stranger ? h('span', { class: 'chip warm' }, '🌱 stranger mode') : null,
+                    u.clinician ? h('span', { class: 'chip good' }, '🩺 clinician') : null,
                     u.checkins.on ? h('span', { class: 'chip good' }, `📋 ${u.checkins.count} check-in${u.checkins.count === 1 ? '' : 's'}${u.checkins.inProgress ? ' · one in progress' : ''}${u.checkins.share ? ' · shared' : ''}`) : null,
                     u.distances.length ? h('div', { class: 'muted' }, u.distances.map((d) => `${d.name}: ${d.text}`).join(' · ')) : null,
                   ),
@@ -147,6 +200,12 @@
                     h('button', { title: 'Asks first if they haven\'t said yes to check-ins yet', onclick: () => post('survey', { userId: u.id }) }, 'Check-in now'),
                     h('button', { title: 'Four made-up check-ins two weeks apart, for the care-team view', onclick: () => post('sample', { userId: u.id, trend: 'steady' }) }, '+ sample: steady'),
                     h('button', { onclick: () => post('sample', { userId: u.id, trend: 'slipping' }) }, '+ sample: slipping'),
+                  ),
+                  h('div', { class: 'bar', style: 'margin-top:6px' },
+                    h('label', { class: 'toggle', title: 'Clinician accounts can start care teams and open the care-team view' },
+                      h('input', { type: 'checkbox', checked: u.clinician || null, onchange: (e) => post('clinician', { userId: u.id, on: e.target.checked }) }), 'clinician account'),
+                    h('label', { class: 'toggle', title: 'Testing only: turns stranger mode on as if they confirmed 18+' },
+                      h('input', { type: 'checkbox', checked: u.stranger || null, onchange: (e) => post('stranger', { userId: u.id, on: e.target.checked }) }), 'stranger mode'),
                   )),
                 ),
               )
@@ -158,7 +217,7 @@
           ...(s.plans.length
             ? s.plans.map((p) =>
                 h('tr', {},
-                  h('td', {}, p.activity, p.low ? h('div', { class: 'muted' }, 'gentle pick') : null),
+                  h('td', {}, p.activity, p.mode === 'stranger' ? h('div', { class: 'muted' }, '🌱 stranger mode') : null, p.low ? h('div', { class: 'muted' }, 'gentle pick') : null),
                   h('td', {}, p.people.map((n, i) => `${n} ${answer(p.answers[i])}`).join(' · ')),
                   h('td', {}, day(p.startAt)),
                   h('td', {}, p.place, p.placeFound ? null : h('div', { class: 'muted' }, 'map search')),
@@ -185,15 +244,31 @@
       async function refresh() {
         try {
           const r = await fetch('/api/admin/state');
-          if (r.ok) render(await r.json());
+          const data = await r.json().catch(() => ({}));
+          $('main').hidden = !r.ok;
+          $('gate').hidden = r.ok;
+          if (r.ok) return render(data);
+          $('gate-note').textContent = data.needsToken
+            ? 'Enter the operator token (EDEN_ADMIN_TOKEN) set on the server.'
+            : 'This dashboard only opens on the server computer itself. To manage the server remotely, start it with EDEN_ADMIN_TOKEN set.';
+          $('token').hidden = !data.needsToken;
+          $('gate').querySelector('button').hidden = !data.needsToken;
         } catch {
           // server restarting
         }
       }
 
+      $('gate').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: $('token').value }) });
+        $('gate-error').textContent = r.ok ? '' : ((await r.json().catch(() => ({}))).error || 'That did not work.');
+        $('token').value = '';
+        refresh();
+      });
+
       $('demo').addEventListener('change', (e) => post('demo', { on: e.target.checked }));
       $('place').addEventListener('click', () => post('place'));
-      $('reset').addEventListener('click', () => confirm('Delete every account, plan and answer?') && post('reset'));
+      $('reset').addEventListener('click', () => confirm('Demo only: delete every account, group, plan and answer?') && post('reset'));
       refresh();
       setInterval(refresh, 2000);
     </script>

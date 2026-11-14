@@ -1,10 +1,11 @@
 // Things to do together. Walking is just one of them.
 // energy: 0 = low effort, 1 = some, 2 = a lot. Low-energy options are favoured on quieter days.
 // osm: OpenStreetMap tags used to find a real place near both people.
+// strangerOk: suitable for meeting someone new in stranger mode (public, daytime, low-intimacy). Never homes or sauna.
 
 export const ACTIVITIES = [
   {
-    id: 'coffee', emoji: '☕', name: 'Coffee',
+    id: 'coffee', emoji: '☕', name: 'Coffee', strangerOk: true,
     ask: 'Do you like meeting someone for a coffee?',
     propose: (p) => `Grab a coffee with ${p}?`,
     did: (p) => `Did you and ${p} have that coffee?`,
@@ -12,7 +13,7 @@ export const ACTIVITIES = [
     osm: ['[amenity=cafe]'], search: 'cafe', placeLabel: 'a café near you both',
   },
   {
-    id: 'walk', emoji: '🚶', name: 'Walk',
+    id: 'walk', emoji: '🚶', name: 'Walk', strangerOk: true,
     ask: 'Do you like going for walks?',
     propose: (p) => `Go for a walk with ${p}?`,
     did: (p) => `Did you and ${p} go for that walk?`,
@@ -27,7 +28,7 @@ export const ACTIVITIES = [
     energy: 1, minutes: 90, times: ['evening'], home: true,
   },
   {
-    id: 'gym', emoji: '🏋️', name: 'Gym',
+    id: 'gym', emoji: '🏋️', name: 'Gym', strangerOk: true,
     ask: 'Do you like working out at a gym?',
     propose: (p) => `Go to the gym with ${p}?`,
     did: (p) => `Did you and ${p} make it to the gym?`,
@@ -68,7 +69,7 @@ export const ACTIVITIES = [
     energy: 0, minutes: 120, times: ['evening'], home: true,
   },
   {
-    id: 'study', emoji: '📚', name: 'Study together',
+    id: 'study', emoji: '📚', name: 'Study together', strangerOk: true,
     ask: 'Does it help to study or work next to someone?',
     propose: (p) => `Study or work side by side with ${p}?`,
     did: (p) => `Did you and ${p} get some work done together?`,
