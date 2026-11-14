@@ -1045,7 +1045,7 @@ function mountDialog(sheet, back, onClose) {
   const keys = (e) => {
     if (e.key === 'Escape') close();
     if (e.key !== 'Tab') return;
-    const buttons = [...sheet.querySelectorAll('button:not([disabled]), a[href], input')];
+    const buttons = [...sheet.querySelectorAll('button:not([disabled]):not([tabindex="-1"]), a[href], input:not([disabled]), select:not([disabled])')];
     const first = buttons[0], last = buttons.at(-1);
     if (e.shiftKey && (document.activeElement === first || document.activeElement === sheet)) { e.preventDefault(); last?.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
@@ -1189,6 +1189,159 @@ async function blockFromPlan(p) {
   else toast(r.data?.error || 'Could not block. Try again.');
 }
 
+/* -------------------------------------------------------- weekly availability */
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const clockTime = cell => `${String(Math.floor(cell / 2)).padStart(2, '0')}:${cell % 2 ? '30' : '00'}`;
+
+function availabilitySummary(schedule) {
+  if (!schedule?.enabled) return 'Flexible — no time filter';
+  const hours = schedule.days.reduce((n, day) => n + day.length / 2, 0);
+  return hours ? `${hours} hours available each week` : 'No times selected — new suggestions paused';
+}
+
+function openAvailability() {
+  const userId = state.me.id;
+  const saved = state.me.availability;
+  const deviceZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  let days = (saved?.days || WEEKDAYS.map(() => [])).map(day => new Set(day));
+  let saving = false, active = true, drag = null;
+  let focused = [0, 18];
+  const cells = WEEKDAYS.map(() => []);
+  const enabled = h('input', { type: 'checkbox', id: 'availability-enabled' });
+  enabled.checked = saved?.enabled ?? true;
+  const zone = h('select', { id: 'availability-zone', 'aria-label': 'Schedule time zone' });
+  const zones = [...new Set([saved?.timeZone || deviceZone, deviceZone, 'UTC', ...(Intl.supportedValuesOf?.('timeZone') || [])])];
+  for (const name of zones) zone.append(h('option', { value: name }, name.replaceAll('_', ' ')));
+  zone.value = saved?.timeZone || deviceZone;
+  const summary = h('p', { class: 'availability-summary', role: 'status', 'aria-live': 'polite' });
+  const error = h('p', { class: 'availability-error', role: 'alert' });
+  const grid = h('table', { class: 'availability-grid', role: 'grid', 'aria-label': 'Weekly availability in 30-minute blocks', 'aria-describedby': 'availability-help' });
+  grid.append(h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Time'),
+    ...WEEKDAYS.map(day => h('th', { scope: 'col', abbr: day }, day.slice(0, 3))))));
+  const body = h('tbody');
+  const focusCell = (day, cell) => {
+    cells[focused[0]][focused[1]].tabIndex = -1;
+    focused = [day, cell];
+    cells[day][cell].tabIndex = 0;
+    cells[day][cell].focus({ preventScroll: true });
+  };
+  const refresh = () => {
+    for (let day = 0; day < 7; day++) for (let cell = 0; cell < 48; cell++) {
+      const selected = days[day].has(cell);
+      cells[day][cell].setAttribute('aria-pressed', String(selected));
+      cells[day][cell].textContent = selected ? '✓' : '';
+    }
+    const count = days.reduce((n, day) => n + day.size, 0);
+    summary.textContent = !enabled.checked ? 'Flexible: Mochii can suggest plans outside the highlighted times.'
+      : count ? `${count / 2} hours selected · repeats every week`
+        : 'No times selected. New suggestions will pause until you add a time.';
+    grid.classList.toggle('filter-off', !enabled.checked);
+  };
+  const toggle = (day, cell) => {
+    if (saving) return;
+    days[day].has(cell) ? days[day].delete(cell) : days[day].add(cell);
+    focusCell(day, cell);
+    refresh();
+  };
+  for (let cell = 0; cell < 48; cell++) {
+    const row = h('tr', { class: cell % 2 ? 'half-hour' : 'hour' }, h('th', { scope: 'row' }, clockTime(cell)));
+    for (let day = 0; day < 7; day++) {
+      const button = h('button', {
+        type: 'button', class: 'availability-cell', 'data-day': day, 'data-cell': cell,
+        tabindex: day === focused[0] && cell === focused[1] ? '0' : '-1',
+        'aria-label': `${WEEKDAYS[day]} ${clockTime(cell)} to ${clockTime(cell + 1)}`,
+        onclick: e => { if (e.detail === 0) toggle(day, cell); }, // keyboard / assistive technology
+        onkeydown: e => {
+          const moves = { ArrowUp: [day, Math.max(0, cell - 1)], ArrowDown: [day, Math.min(47, cell + 1)],
+            ArrowLeft: [Math.max(0, day - 1), cell], ArrowRight: [Math.min(6, day + 1), cell], Home: [0, cell], End: [6, cell] };
+          if (!moves[e.key]) return;
+          e.preventDefault();
+          focusCell(...moves[e.key]);
+          cells[focused[0]][focused[1]].scrollIntoView({ block: 'nearest' });
+        },
+      });
+      cells[day][cell] = button;
+      row.append(h('td', {}, button));
+    }
+    body.append(row);
+  }
+  grid.append(body);
+  const paint = (day, cell) => {
+    days = drag.before.map(set => new Set(set));
+    for (let d = Math.min(day, drag.day); d <= Math.max(day, drag.day); d++) {
+      for (let c = Math.min(cell, drag.cell); c <= Math.max(cell, drag.cell); c++) {
+        drag.add ? days[d].add(c) : days[d].delete(c);
+      }
+    }
+    refresh();
+  };
+  grid.addEventListener('pointerdown', e => {
+    const button = e.target.closest('.availability-cell');
+    if (!button || e.button !== 0 || saving || drag) return;
+    e.preventDefault();
+    const day = Number(button.dataset.day), cell = Number(button.dataset.cell);
+    drag = { day, cell, add: !days[day].has(cell), before: days.map(set => new Set(set)), id: e.pointerId };
+    focusCell(day, cell);
+    grid.setPointerCapture(e.pointerId);
+    paint(day, cell);
+  });
+  grid.addEventListener('pointermove', e => {
+    if (!drag || drag.id !== e.pointerId) return;
+    const button = document.elementFromPoint(e.clientX, e.clientY)?.closest('.availability-cell');
+    if (button && grid.contains(button)) paint(Number(button.dataset.day), Number(button.dataset.cell));
+  });
+  grid.addEventListener('pointerup', e => {
+    if (drag?.id !== e.pointerId) return;
+    drag = null;
+    grid.releasePointerCapture(e.pointerId);
+  });
+  grid.addEventListener('pointercancel', () => {
+    if (drag) { days = drag.before; drag = null; refresh(); }
+  });
+  grid.addEventListener('lostpointercapture', () => { drag = null; });
+  enabled.addEventListener('change', refresh);
+  const all = h('button', { type: 'button', class: 'btn quiet', onclick: () => { days = WEEKDAYS.map(() => new Set(Array.from({ length: 48 }, (_, i) => i))); refresh(); } }, 'Select all');
+  const clear = h('button', { type: 'button', class: 'btn quiet', onclick: () => { days = WEEKDAYS.map(() => new Set()); refresh(); } }, 'Clear');
+  const viewport = h('div', { class: 'availability-scroll' }, grid);
+  const save = h('button', { type: 'button', class: 'btn yes', onclick: async () => {
+    if (saving) return;
+    saving = true;
+    for (const control of [save, enabled, zone, all, clear, ...cells.flat()]) control.disabled = true;
+    save.textContent = 'Saving…';
+    error.textContent = '';
+    const r = await api('/api/availability', { enabled: enabled.checked, timeZone: zone.value, days: days.map(day => [...day].sort((a, b) => a - b)) });
+    if (!active || state?.me.id !== userId) return;
+    if (r.ok) {
+      setState(r.data);
+      closeDialog?.();
+      toast('Your meeting times are saved.');
+    } else {
+      saving = false;
+      for (const control of [save, enabled, zone, all, clear, ...cells.flat()]) control.disabled = false;
+      save.textContent = 'Save availability';
+      error.textContent = r.data?.error || 'Could not save. Your changes are still here — try again.';
+    }
+  } }, 'Save availability');
+  const sheet = h('div', { class: 'sheet availability-sheet', role: 'dialog', 'aria-labelledby': 'availability-title' },
+    h('span', { class: 'eyebrow' }, 'A LITTLE TIME TOGETHER'),
+    h('h2', { id: 'availability-title' }, 'When are you free?'),
+    h('p', { id: 'availability-help', class: 'availability-help' }, 'Drag across the week or tap a block. Each block is 30 minutes. Use arrow keys to move and Space to select.'),
+    h('label', { class: 'availability-toggle', for: 'availability-enabled' }, enabled, 'Only suggest plans during my selected times'),
+    h('div', { class: 'availability-toolbar' }, h('label', { for: 'availability-zone' }, 'Time zone', zone), h('div', { class: 'availability-tools' }, all, clear)),
+    h('div', { class: 'availability-legend' }, h('span', {}, h('i', { class: 'selected' }), 'Ready to meet'), h('span', {}, h('i'), 'Unavailable')),
+    viewport,
+    h('p', { class: 'availability-touch-tip' }, 'On a phone, slide the Time column to scroll.'),
+    summary,
+    h('p', { class: 'availability-note' }, 'Mochii finds a shared time that fits the whole activity. Your weekly schedule is private. Confirmed plans stay as agreed.'),
+    error,
+    h('div', { class: 'availability-actions' }, h('button', { type: 'button', class: 'btn no', onclick: () => closeDialog?.() }, 'Cancel'), save),
+  );
+  refresh();
+  mountDialog(sheet, h('div', { class: 'backdrop' }), () => { active = false; drag = null; });
+  viewport.scrollTop = 12 * 26; // open at 06:00; every hour of the day remains selectable
+}
+
 function openMenu() {
   const close = () => closeDialog?.();
   const geoOn = localStorage.getItem('eden.geo') === 'on';
@@ -1231,6 +1384,8 @@ function openMenu() {
     catImage('profile-cat'),
     h('span', { class: 'eyebrow' }, 'YOUR SPACE, YOUR PACE'),
     h('h2', {}, `Hi, ${state.me.name}`),
+    h('div', { class: 'row' }, h('b', {}, '🗓️ Ready to meet: '), availabilitySummary(state.me.availability)),
+    h('button', { class: 'btn quiet', onclick: openAvailability }, 'Set my availability'),
     h('div', { class: 'row' }, h('b', {}, '📍 Location: '), geoOn ? 'on. Mochii uses your location for your map and nearby plans. Your map sharing is controlled below.' : 'off. Allow location to place your cat on the map and find nearby plans.'),
     !geoOn ? h('button', { class: 'btn quiet', onclick: () => openLocationPrompt(true) }, 'Turn location on') : null,
     h('div', { class: 'row' }, h('b', {}, '🗺️ On the map: '),
